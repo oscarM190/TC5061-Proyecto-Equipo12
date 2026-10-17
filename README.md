@@ -161,12 +161,12 @@ descripción indica qué cambia, cómo se probó y de qué otro PR depende.
 
 ## Integrantes
 
-| Integrante | GitHub | Rol |
-|------------|--------|-----|
-| Oscar Eduardo Morales Portuondo | [@oscarM190](https://github.com/oscarM190) | Estructura del repositorio e ingesta de datos |
-| Julián Hazael Martínez Hernández | [@julianhmh01](https://github.com/julianhmh01) | P1: regresión de viajes por estación |
-| Eduardo Sebastián Vela Alanís | | P2: clasificación de riesgo por estación |
-| Jordan Piero Borda Colque | [@neronapier](https://github.com/neronapier) | P3: clustering de estaciones |
+| Integrante | GitHub |
+|------------|--------|
+| Oscar Eduardo Morales Portuondo | [@oscarM190](https://github.com/oscarM190) |
+| Julián Hazael Martínez Hernández | [@julianhmh01](https://github.com/julianhmh01) |
+| Eduardo Sebastián Vela Alanís | |
+| Jordan Piero Borda Colque | [@neronapier](https://github.com/neronapier) |
 
 ## Referencias
 

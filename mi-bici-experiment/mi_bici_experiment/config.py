@@ -36,6 +36,24 @@ FEATURES_PARQUET = INTERIM_DATA_DIR/"features.parquet"
 ##  MLflow   ##
 MLFLOW_EXPERIMENT = "mibici-equipo12"
 
+MI_BICI_CSVS = [
+    "https://mibici.net/site/assets/files/115104/datos_abiertos_2025_10.csv",
+    "https://mibici.net/site/assets/files/116773/datos_abiertos_2025_11.csv",
+    "https://mibici.net/site/assets/files/118153/datos_abiertos_2025_12.csv",
+    "https://mibici.net/site/assets/files/120163/datos_abiertos_2026_01.csv",
+    "https://mibici.net/site/assets/files/121761/datos_abiertos_2026_02.csv",
+    "https://mibici.net/site/assets/files/123236/datos_abiertos_2026_03.csv",
+    "https://mibici.net/site/assets/files/124927/datos_abiertos_2026_04.csv",
+    "https://mibici.net/site/assets/files/125943/datos_abiertos_2026_05.csv",
+    "https://mibici.net/site/assets/files/127734/datos_abiertos_2026_06.csv",
+    "https://mibici.net/site/assets/files/129006/datos_abiertos_2026_07.csv",
+    "https://mibici.net/site/assets/files/130362/datos_abiertos_2026_08.csv",
+    "https://mibici.net/site/assets/files/131825/datos_abiertos_2026_09.csv",
+    "https://mibici.net/site/assets/files/1118/nomenclatura_2026_09.csv"
+]
+
+
+
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135
 try:

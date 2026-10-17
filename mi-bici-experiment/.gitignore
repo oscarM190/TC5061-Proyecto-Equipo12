@@ -1,6 +1,10 @@
 # Data
 /data/
 
+# MLflow local y figuras que regenera cada run (se guardan como artefactos)
+mlflow.db
+/reports/figures/p3/
+
 # Mac OS-specific storage files
 .DS_Store
 

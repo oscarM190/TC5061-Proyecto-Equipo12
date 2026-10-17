@@ -8,7 +8,14 @@ Execute the commands:
 1.- virtualenv venv3.13 --python=python3.14.7
 2.- source venv3.13/bin/activate
 3.- cd mi-bici-experiment
-4.- pip3 install -r requirements.txt o pip install -r requirements.txt. -> Depende tu configuracion
+Mac
+4.1.- pip3 install -r requirements.txt
+Windows
+4.2.- pip install -r requirements.txt
+Mac
+5.1- python3 -m mi_bici_experiment.dataset
+Windows
+5.1- python -m mi_bici_experiment.features
 
 ## Descargar datos de MiBici en local
 

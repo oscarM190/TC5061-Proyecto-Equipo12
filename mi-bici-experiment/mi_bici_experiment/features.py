@@ -66,6 +66,9 @@ def agregar_variables(diario: pd.DataFrame, col_estacion: str) -> pd.DataFrame:
     columnas_historicas = ["trips_lag_1", "trips_lag_7", "trips_roll_mean_7"]
     return diario.dropna(subset=columnas_historicas).reset_index(drop=True)
 
+def clasificacion_variable_objetivo_y_caracterizticas():
+    print("TODO")
+
 @app.command()
 def main(
     input_path: Path = RAW_DATA_DIR,

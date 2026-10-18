@@ -16,6 +16,11 @@ Mac
 5.1- python3 -m mi_bici_experiment.dataset
 Windows
 5.1- python -m mi_bici_experiment.features
+Mac
+6.1 python3 mi-bici-experiment/scripts/entrenar_modelos.py
+Windows
+5.1- python -m mi_bici_experiment.features
+
 
 ## Descargar datos de MiBici en local
 

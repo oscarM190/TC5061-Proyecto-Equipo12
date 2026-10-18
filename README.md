@@ -1,5 +1,12 @@
 # TC5061 Proyecto MiBici, Equipo 12
 
+[![CI](https://github.com/neronapier/Proyecto-MiBici/actions/workflows/ci.yml/badge.svg)](https://github.com/neronapier/Proyecto-MiBici/actions/workflows/ci.yml)
+[![Pipeline MiBici](https://github.com/neronapier/Proyecto-MiBici/actions/workflows/pipeline.yml/badge.svg)](https://github.com/neronapier/Proyecto-MiBici/actions/workflows/pipeline.yml)
+[![Pipeline VPS](https://github.com/neronapier/Proyecto-MiBici/actions/workflows/vps.yml/badge.svg)](https://github.com/neronapier/Proyecto-MiBici/actions/workflows/vps.yml)
+<a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
+    <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
+</a>
+
 Proyecto integrador del curso TC5061 Operaciones de Aprendizaje Automático (MLOps), Tec de Monterrey.
 El equipo propone y valida soluciones de Machine Learning para la operación de MiBici, el sistema de
 bicicleta pública del Área Metropolitana de Guadalajara, con datos reproducibles y experimentos

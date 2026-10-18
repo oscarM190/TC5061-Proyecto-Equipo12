@@ -5,6 +5,12 @@
 mlflow.db
 /reports/figures/p3/
 
+# Modelos serializados (se registran en MLflow, no en Git)
+*.pkl
+*.joblib
+*.skops
+*.onnx
+
 # Mac OS-specific storage files
 .DS_Store
 

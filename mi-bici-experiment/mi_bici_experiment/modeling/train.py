@@ -6,23 +6,26 @@ import typer
 
 from mi_bici_experiment.config import MODELS_DIR, PROCESSED_DATA_DIR
 
-import hashlib
 import os
-import subprocess
 
+import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans
+from sklearn.compose import ColumnTransformer
 from sklearn.decomposition import PCA
+from sklearn.linear_model import LinearRegression
 from sklearn.metrics import (
     adjusted_rand_score,
     calinski_harabasz_score,
     davies_bouldin_score,
+    mean_absolute_error,
+    mean_squared_error,
     silhouette_score,
 )
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 from mi_bici_experiment import plots
 from mi_bici_experiment.config import (
@@ -33,26 +36,33 @@ from mi_bici_experiment.config import (
     FECHA_INICIO,
     FECHA_INICIO_COL,
     FEATURES_PARQUET,
-    MI_BICI_CSVS,
+    FIGURES_DIR,
+    LAGS,
     MLFLOW_EXPERIMENT,
     NOMENCLATURA_PARQUET,
+    OBJETIVO_COL,
     P3_FIGURES_DIR,
     P3_FIN_ENTRENAMIENTO,
     P3_K_BASELINE,
     P3_K_CANDIDATOS,
     P3_MIN_VIAJES,
+    P3_N_INIT,
     P3_PCA_COMPONENTES,
-    PROJ_ROOT,
+    PM_DIAS,
     RANDOM_STATE,
-    RAW_DATA_DIR,
     STATION_COL,
+    TEST_PARTICION,
 )
 from mi_bici_experiment.features import (
+    agregar_variables,
     columnas_perfil,
+    construir_viajes_diarios,
     filtrar_viajes_validos,
     info_estaciones,
+    limpiar_viajes,
     perfil_estaciones,
 )
+from mi_bici_experiment.tracking import git_info, version_datos
 
 app = typer.Typer()
 
@@ -74,37 +84,116 @@ def main(
     # -----------------------------------------
 
 
+"""P1 (regresión): baseline de regresión lineal para viajes diarios por estación."""
+class RegresionP1:
+    """P1: baseline de regresión lineal para viajes diarios por estación.
+    Métricas usadas: MAE y RMSE."""
+
+    def __init__(self, fecha_inicio=FECHA_INICIO, fecha_fin=FECHA_FIN, fraccion_test=TEST_PARTICION):
+        self.fecha_inicio = fecha_inicio
+        self.fecha_fin = fecha_fin
+        self.fraccion_test = fraccion_test
+        self.num_var = [f"trips_lag_{r}" for r in LAGS] + [f"trips_roll_mean_{PM_DIAS}", "is_weekend"]
+        self.cat_var = [STATION_COL, "dayofweek", "month"]
+        self.todas_var = self.num_var + self.cat_var
+        self.entrenamiento = None
+        self.prueba = None
+        self.modelo = None
+        self.y_pred = None
+        self.metricas = {}
+
+    def cargar_viajes(self):    #Dataframe
+        columnas = [STATION_COL, FECHA_INICIO_COL]
+        viajes = pd.read_parquet(FEATURES_PARQUET, columns=columnas)
+
+        inicio = pd.Timestamp(self.fecha_inicio)
+        fin = pd.Timestamp(self.fecha_fin) + pd.Timedelta(days=1)
+        return viajes[(viajes[FECHA_INICIO_COL] >= inicio) & (viajes[FECHA_INICIO_COL] < fin)]
+
+    def preparar_datos(self):
+        """Limpia, agrega por estación y día, y hace la partición cronológica."""
+        viajes = limpiar_viajes(self.cargar_viajes(), STATION_COL, FECHA_INICIO_COL)
+
+        diario = construir_viajes_diarios(viajes, STATION_COL, FECHA_INICIO_COL)
+        dataset= agregar_variables(diario, STATION_COL)
+
+        fechas = np.sort(dataset["date"].unique())
+        corte = fechas[int(len(fechas) *(1 - self.fraccion_test))]
+        self.entrenamiento = dataset[dataset["date"] <corte]
+        self.prueba = dataset[dataset["date"] >= corte]
+        print(f"Estaciones: {dataset[STATION_COL].nunique()} | "
+              f"filas train: {len(self.entrenamiento):,} | filas test: {len(self.prueba):,}")
+
+    def construir_modelo(self):   #Pipeline
+        """Modelo baseline: escalado numérico, one-hot encoding y regresión lineal."""
+        preprocesador = ColumnTransformer([
+            ("num", StandardScaler(), self.num_var),
+            ("cat", OneHotEncoder(handle_unknown="ignore"), self.cat_var),
+        ])
+        return Pipeline([
+            ("preprocesamiento", preprocesador),
+            ("modelo", LinearRegression()),
+        ])
+
+    def entrenar(self):
+        """Entrena el modelo con el periodo de entrenamiento."""
+        self.modelo = self.construir_modelo()
+        self.modelo.fit(self.entrenamiento[self.todas_var], self.entrenamiento[OBJETIVO_COL])
+
+    def evaluar(self):    #Dict
+        """Calculo de MAE y RMSE sobre el conjunto de prueba."""
+        y_real = self.prueba[OBJETIVO_COL]
+        self.y_pred =np.clip(self.modelo.predict(self.prueba[self.todas_var]), 0, None)  # no hay viajes negativos
+        self.metricas = {
+            "test_mae":float(mean_absolute_error(y_real, self.y_pred)),
+            "test_rmse":float(np.sqrt(mean_squared_error(y_real, self.y_pred)))}
+        print(f"P1 baseline regresión lineal: {self.metricas}")
+        return self.metricas
+
+    def graficar(self):   #string
+        """Generar gráficas (artefacto): viajes diarios totales reales vs predichos en el periodo de prueba."""
+        FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+        por_dia = (self.prueba[["date"]]
+                   .assign(real=self.prueba[OBJETIVO_COL].to_numpy(), predicho=self.y_pred)
+                   .groupby("date").sum())
+        ax = por_dia.plot(title="P1 regresión lineal: viajes diarios totales (test)")
+        ruta = FIGURES_DIR/"Prediccion_regresion_contra_reales.png"
+        ax.figure.savefig(ruta)
+        plt.close(ax.figure)
+        return str(ruta)
+
+    def registrar_mlflow(self):
+        """Registra parámetros, métricas y el artefacto en MLflow."""
+        mlflow.set_experiment(MLFLOW_EXPERIMENT)
+        with mlflow.start_run(run_name="P1-regresion-lineal-baseline"):
+            mlflow.log_params({
+                "fecha_inicio":self.fecha_inicio,
+                "fecha_fin":self.fecha_fin,
+                "fraccion_test":self.fraccion_test,
+                "random_state":RANDOM_STATE,
+                "modelo":"LinearRegression",
+                "lags":str(LAGS),
+                "PM_DIAS":PM_DIAS,
+            })
+            mlflow.log_metrics(self.metricas)
+            mlflow.log_artifact(self.graficar())
+
+    def ejecutar(self):
+        self.preparar_datos()
+        self.entrenar()
+        self.evaluar()
+        self.registrar_mlflow()
+
+
+@app.command()
+def regresion_p1():
+    """Ejecuta el baseline de regresión (P1)."""
+    RegresionP1().ejecutar()
+
+
 # ---------------------------------------------------------------------------------------------
 # P3 (clustering): grupos de estaciones que comparten patrones de uso
 # ---------------------------------------------------------------------------------------------
-
-
-def git_info() -> dict:
-    """Commit, rama y cambios sin commit; ligan cada run con el código que lo produjo."""
-
-    def git(*args):
-        return subprocess.run(
-            ["git", *args], cwd=PROJ_ROOT, capture_output=True, text=True, check=True
-        ).stdout.strip()
-
-    return {
-        "git_commit": git("rev-parse", "HEAD"),
-        "git_branch": git("rev-parse", "--abbrev-ref", "HEAD"),
-        "git_dirty": str(bool(git("status", "--porcelain", "--untracked-files=no"))).lower(),
-    }
-
-
-def version_datos() -> str:
-    """Huella SHA-256 de los CSV crudos usados (nombre y contenido), para registrarla en MLflow."""
-    total = hashlib.sha256()
-    for url in MI_BICI_CSVS:
-        ruta = RAW_DATA_DIR / url.rsplit("/", 1)[-1]
-        h = hashlib.sha256()
-        with open(ruta, "rb") as f:
-            for bloque in iter(lambda: f.read(1 << 20), b""):
-                h.update(bloque)
-        total.update(f"{ruta.name}:{h.hexdigest()}".encode())
-    return f"sha256-{total.hexdigest()[:12]}"
 
 
 class ClusteringP3:
@@ -114,6 +203,8 @@ class ClusteringP3:
     Candidato: estandarización, PCA y k-means sobre el perfil completo, con k elegido por silueta.
     Métricas: silueta, Davies-Bouldin y Calinski-Harabasz en entrenamiento, y ARI de estabilidad
     entre los grupos de entrenamiento y los que se asignan con el perfil del periodo posterior.
+    Las métricas `*_espacio_comun` se calculan para ambos modelos sobre el perfil completo
+    estandarizado, el único espacio en el que baseline y candidato se pueden comparar.
     """
 
     def __init__(self, fin_entrenamiento=P3_FIN_ENTRENAMIENTO):
@@ -145,14 +236,21 @@ class ClusteringP3:
         """
         pasos = [StandardScaler(), PCA(P3_PCA_COMPONENTES, random_state=RANDOM_STATE)]
         pipe = make_pipeline(
-            *(pasos if reducir else []), KMeans(n_clusters=k, n_init=20, random_state=RANDOM_STATE)
+            *(pasos if reducir else []), KMeans(n_clusters=k, n_init=P3_N_INIT, random_state=RANDOM_STATE)
         )
         grupos = pipe.fit_predict(self.perfil[cols])
         X = pipe[:-1].transform(self.perfil[cols]) if reducir else self.perfil[cols].to_numpy()
         return pipe, grupos, X
 
     def metricas(self, pipe, grupos, X, cols) -> dict:
-        """Cohesión y separación en entrenamiento y estabilidad en el periodo posterior."""
+        """Cohesión y separación en entrenamiento y estabilidad en el periodo posterior.
+
+        `train_silhouette`, `train_davies_bouldin` y `train_calinski_harabasz` se miden en el
+        espacio en que se ajustó cada modelo (perfil crudo en el baseline, PCA en el candidato),
+        así que no son comparables entre runs. Las versiones `_espacio_comun` miden los mismos
+        grupos sobre el perfil completo estandarizado y sí permiten compararlos.
+        """
+        X_comun = StandardScaler().fit_transform(self.perfil[columnas_perfil(self.perfil)])
         comunes = self.perfil["estacion_id"].isin(self.perfil_test["estacion_id"]).to_numpy()
         test = self.perfil_test.set_index("estacion_id").loc[
             self.perfil.loc[comunes, "estacion_id"]
@@ -161,6 +259,10 @@ class ClusteringP3:
             "train_silhouette": silhouette_score(X, grupos, random_state=RANDOM_STATE),
             "train_davies_bouldin": davies_bouldin_score(X, grupos),
             "train_calinski_harabasz": calinski_harabasz_score(X, grupos),
+            "train_silhouette_espacio_comun": silhouette_score(
+                X_comun, grupos, random_state=RANDOM_STATE
+            ),
+            "train_davies_bouldin_espacio_comun": davies_bouldin_score(X_comun, grupos),
             "train_tamano_min_grupo": int(np.bincount(grupos).min()),
             "test_ari_estabilidad": adjusted_rand_score(grupos[comunes], pipe.predict(test[cols])),
         }
@@ -214,7 +316,7 @@ class ClusteringP3:
                     "n_estaciones": len(self.perfil),
                     "modelo": "KMeans",
                     "n_clusters": k,
-                    "n_init": 20,
+                    "n_init": P3_N_INIT,
                     "escalado": reducir,
                     "pca_componentes": P3_PCA_COMPONENTES if reducir else 0,
                     **params,

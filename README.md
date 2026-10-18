@@ -10,7 +10,7 @@ registrados en MLflow.
 | # | Pregunta | Tarea | Formulación | Usuario |
 |---|----------|-------|-------------|---------|
 | P1 | ¿Cuántos viajes se iniciarán en una estación o zona en un periodo futuro? | Regresión | Viajes iniciados por estación y día, con rezagos de 1 y 7 días y promedio móvil de 7 días | Operador del sistema |
-| P2 | ¿Una estación estará en riesgo de quedarse sin bicicletas o sin anclajes? | Clasificación | En desarrollo | Equipo de rebalanceo |
+| P2 | ¿Una estación estará en riesgo de quedarse sin bicicletas o sin anclajes? | Clasificación | Estado de cada estación al día siguiente (sin bicicletas, balanceada o sin anclajes) a partir del balance neto diario (llegadas − salidas) dividido entre su capacidad | Equipo de rebalanceo |
 | P3 | ¿Qué grupos de estaciones comparten patrones de uso y dónde se ubican? | Clustering | Grupos de estaciones según su perfil horario de salidas y llegadas, peso del fin de semana, uso diario y balance | Planeación urbana |
 
 ## Datos
@@ -110,21 +110,26 @@ Todos los runs se registran en el experimento `mibici-equipo12`:
 | Pregunta | Run | Modelo | Métricas |
 |----------|-----|--------|----------|
 | P1 | `P1-regresion-lineal-baseline` | Regresión lineal con rezagos y calendario | `test_mae`, `test_rmse` |
-| P3 | `P3-kmeans-baseline-k4` | K-means, k = 4, perfil horario de salidas | `train_silhouette`, `train_davies_bouldin`, `test_ari_estabilidad` |
+| P2 | `regresion-lineal-multinomial-clasificacion` | Regresión logística multinomial con escalado (#5) | precisión, recall y F1 macro en validación y prueba |
+| P3 | `P3-kmeans-baseline-k4` | K-means, k = 4, perfil horario de salidas | `train_silhouette_espacio_comun`, `train_davies_bouldin_espacio_comun`, `test_ari_estabilidad` |
 | P3 | `P3-pca-kmeans-candidato` | Estandarización + PCA + k-means, k por silueta | igual |
+
+En P3, `train_silhouette` y `train_davies_bouldin` se miden en el espacio de cada modelo y no se
+comparan entre runs; las versiones `_espacio_comun` usan el perfil completo estandarizado.
 
 ## Estado del proyecto
 
 | Componente | Estado | Pull Request |
 |------------|--------|--------------|
 | Estructura ccds | Integrado | `main` |
-| Ingesta y Parquet | En revisión | #1 (`task/populate_data_scripts`) |
-| P1 baseline | En revisión | #2 (`p1-regresion-modelo`) |
-| P3 baseline y candidato | En revisión; depende de #1 | #3 (`feat/p3-clustering`) |
-| P2 | Pendiente | |
-| Versionado de datos (manifiesto con SHA-256) | Pendiente; P3 registra una huella provisional en `data_version` | |
+| Ingesta y Parquet | Integrado | #1 (`task/populate_data_scripts`) |
+| P1 baseline | Integrado | #2 (`p1-regresion-modelo`) |
+| P3 baseline y candidato | En revisión; sin conflictos con `main` | #3 (`feat/p3-clustering`) |
+| P2 baseline | En revisión | #5 (`task/clasification-model`) |
+| Script que entrena todos los modelos | En revisión; llega con #5 y P3 se agrega al integrar #3 | #5 |
+| Versionado de datos | Huella SHA-256 de los CSV crudos en `data_version` (`tracking.py`, #3); manifiesto con conteo de registros pendiente | #3 |
 | Pipeline de GitHub Actions | Pendiente; `mlflow.yml` no termina (`runs-on` y ruta de `requirements.txt`) | |
-| Pruebas | `tests/test_p3.py` pasa; `tests/test_data.py` es el marcador de la plantilla y falla | |
+| Pruebas | `python -m pytest tests` pasa (7 pruebas) con #3 | #3 |
 
 ## Buenas prácticas aplicadas
 
@@ -138,7 +143,7 @@ Todos los runs se registran en el experimento `mibici-equipo12`:
 | Notebooks solo para exploración | `notebooks/1.0-<iniciales>-<descripcion>.ipynb`; la lógica vive en `mi_bici_experiment/` |
 | Configuración en un solo lugar | Rutas, fechas, semilla y columnas en `config.py` |
 | Dependencias fijas | `requirements.txt` con versiones fijas y Python 3.14.7 |
-| Nada de datos, modelos ni MLflow en Git | `.gitignore` excluye `data/`, `mlruns/`, `mlartifacts/` y `mlflow.db` (este último desde #3) |
+| Nada de datos, modelos ni MLflow en Git | `.gitignore` excluye `data/`, `mlruns/`, `mlartifacts/` y `mlflow.db` y modelos serializados (`*.pkl`, `*.joblib`, `*.skops`, `*.onnx`), estos dos últimos desde #3 |
 
 ## Flujo de trabajo con Git
 
@@ -161,12 +166,12 @@ descripción indica qué cambia, cómo se probó y de qué otro PR depende.
 
 ## Integrantes
 
-| Integrante | GitHub |
-|------------|--------|
-| Oscar Eduardo Morales Portuondo | [@oscarM190](https://github.com/oscarM190) |
-| Julián Hazael Martínez Hernández | [@julianhmh01](https://github.com/julianhmh01) |
-| Eduardo Sebastián Vela Alanís | |
-| Jordan Piero Borda Colque | [@neronapier](https://github.com/neronapier) |
+| Integrante | GitHub | Rol |
+|------------|--------|-----|
+| Oscar Eduardo Morales Portuondo | [@oscarM190](https://github.com/oscarM190) | Estructura ccds, ingesta de datos (`dataset.py`) y P2 (clasificación) |
+| Julián Hazael Martínez Hernández | [@julianhmh01](https://github.com/julianhmh01) | P1 (regresión) |
+| Eduardo Sebastián Vela Alanís | [@eduardoVela2022](https://github.com/eduardoVela2022) | Revisión de Pull Requests e integración a `main` |
+| Jordan Piero Borda Colque | [@neronapier](https://github.com/neronapier) | P3 (clustering) y documentación (README) |
 
 ## Referencias
 

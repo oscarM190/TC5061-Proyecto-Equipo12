@@ -42,6 +42,50 @@ usar instalaciones de Python en macOS sin un almacén de certificados configurad
 Si tu red utiliza una CA privada, puedes agregar su archivo PEM con
 `--ca-file /ruta/certificados.pem`.
 
+## P3: grupos de estaciones con patrones de uso similares
+
+Pregunta: ¿qué grupos de estaciones comparten patrones de uso y dónde se ubican en la ciudad?
+Usuario: planeación urbana y expansión del sistema.
+
+| Elemento | Definición |
+|----------|------------|
+| Qué se agrupa | Estaciones (una fila por estación) |
+| Variables | Proporción de salidas y de llegadas por hora en días hábiles (48), peso del fin de semana, log de viajes por día y balance llegadas/salidas (`features.py`, sección P3) |
+| Periodo | Ajuste con 2025-10 a 2026-06; 2026-07 a 2026-09 solo mide estabilidad (`P3_FIN_ENTRENAMIENTO` en `config.py`) |
+| Limpieza | Sin duraciones no positivas o mayores a 6 h ni devoluciones en la misma estación en menos de 60 s; solo estaciones con al menos 300 salidas |
+| Baseline | K-means con k = 4 sobre el perfil horario de salidas |
+| Candidato | Estandarización + PCA (3) + k-means, k entre 3 y 8 elegido por silueta |
+| Métricas | `train_silhouette`, `train_davies_bouldin` y `train_calinski_harabasz` en el espacio de cada modelo; `train_silhouette_espacio_comun` y `train_davies_bouldin_espacio_comun` sobre el perfil completo estandarizado (las únicas comparables entre baseline y candidato); `test_ari_estabilidad` (grupos de entrenamiento frente a los asignados con el perfil posterior) |
+
+```bash
+python -m mi_bici_experiment.dataset      # descarga y Parquet (Oscar)
+python -m mi_bici_experiment.features     # data/interim/features.parquet
+python -m mi_bici_experiment.modeling.train clustering-p3
+python -m pytest tests
+```
+
+Cada run se registra en el experimento `mibici-equipo12` con parámetros de reproducción (fechas,
+`data_version` = huella SHA-256 de los CSV crudos, semilla e hiperparámetros), etiquetas (`equipo`,
+`pregunta`, `tipo_modelo`, `git_commit`, `git_branch`, `git_dirty`) y artefactos: mapa de grupos,
+perfil horario por grupo, silueta por k, `estaciones_por_grupo.csv` y `resumen_grupos.csv`.
+
+Resultados (2025-10 a 2026-09; 378 estaciones con al menos 300 salidas en entrenamiento):
+
+| Run | k | train_silhouette_espacio_comun | train_davies_bouldin_espacio_comun | test_ari_estabilidad |
+|-----|---|--------------------------------|------------------------------------|----------------------|
+| `P3-kmeans-baseline-k4` | 4 | 0.038 | 3.322 | 0.462 |
+| `P3-pca-kmeans-candidato` | 3 | **0.073** | **2.780** | **0.615** |
+
+`train_silhouette` (0.111 frente a 0.275) no se compara entre runs: el baseline la mide en las 24
+proporciones de salidas y el candidato en los 3 componentes de PCA. El sistema pasa de 368 estaciones
+activas en 2025-10 a 468 en 2026-09 (las nuevas abren desde 2026-06), así que la estabilidad se mide
+solo con las estaciones que existen en ambos periodos.
+
+Grupos del candidato: origen matutino (171 estaciones, periferia norte y sureste, salen a las 8 h y
+llegan a las 18 h), destino matutino (111, poniente central, llegan a las 8 h y tienden a vaciarse) y
+uso repartido en el día (95, centro). La exploración está en
+`notebooks/1.0-jpbc-p3-clustering-estaciones.ipynb`.
+
 ## Project Organization
 
 ```

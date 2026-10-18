@@ -52,7 +52,23 @@ MI_BICI_CSVS = [
     "https://mibici.net/site/assets/files/1118/nomenclatura_2026_09.csv"
 ]
 
+##   Columnas y archivos que usan P2 y P3 (las generales están en la sección de P1)   ##
+EQUIPO = "12"
+NOMENCLATURA_PARQUET = RAW_DATA_DIR / "nomenclatura.parquet"
+DESTINO_COL = "Destino_Id"
+FECHA_FIN_COL = "Fin_del_viaje"
 
+##   Clustering (P3)   ##
+# Los grupos se ajustan con 2025-10 a 2026-06; 2026-07 a 2026-09 solo mide su estabilidad
+P3_FIN_ENTRENAMIENTO = "2026-06-30"
+P3_DURACION_MAX_S = 6 * 3600  # viajes más largos se consideran registros anómalos
+P3_DEVOLUCION_S = 60  # misma estación en menos de 60 s: devolución inmediata, no es viaje
+P3_MIN_VIAJES = 300  # salidas mínimas en entrenamiento para que el perfil sea estable
+P3_K_BASELINE = 4
+P3_K_CANDIDATOS = [3, 4, 5, 6, 7, 8]
+P3_PCA_COMPONENTES = 3
+P3_N_INIT = 20  # inicializaciones de k-means; se queda la de menor inercia
+P3_FIGURES_DIR = FIGURES_DIR / "p3"
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135

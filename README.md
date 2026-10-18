@@ -177,7 +177,7 @@ descripción indica qué cambia, cómo se probó y de qué otro PR depende.
 |------------|--------|-----|
 | Oscar Eduardo Morales Portuondo | [@oscarM190](https://github.com/oscarM190) | Estructura ccds, ingesta de datos (`dataset.py`) y P2 (clasificación) |
 | Julián Hazael Martínez Hernández | [@julianhmh01](https://github.com/julianhmh01) | P1 (regresión) |
-| Eduardo Sebastián Vela Alanís | [@eduardoVela2022](https://github.com/eduardoVela2022) | Revisión de Pull Requests e integración a `main` |
+| Eduardo Sebastián Vela Alanís | [@eduardoVela2022](https://github.com/eduardoVela2022) | EDA (`notebooks/eda_mibici_trips.ipynb`), ML Canvas, revisión de Pull Requests e integración a `main` |
 | Jordan Piero Borda Colque | [@neronapier](https://github.com/neronapier) | P3 (clustering) y documentación (README) |
 
 ## Referencias

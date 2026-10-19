@@ -61,6 +61,7 @@ from mi_bici_experiment.config import (
     RANDOM_STATE,
     STATION_COL,
     TEST_PARTICION,
+    VAL_PARTICION,
 )
 from mi_bici_experiment.features import (
     agregar_variables,
@@ -98,7 +99,7 @@ class RegresionP1:
     """P1: baseline de regresión lineal para viajes diarios por estación.
     Métricas usadas: MAE y RMSE."""
 
-    def __init__(self, fecha_inicio=FECHA_INICIO, fecha_fin=FECHA_FIN, fraccion_test=TEST_PARTICION):
+    def __init__(self, fecha_inicio=FECHA_INICIO, fecha_fin=FECHA_FIN,fraccion_val=VAL_PARTICION, fraccion_test=TEST_PARTICION):
         self.fecha_inicio = fecha_inicio
         self.fecha_fin = fecha_fin
         self.fraccion_test = fraccion_test
@@ -109,6 +110,8 @@ class RegresionP1:
         self.prueba = None
         self.modelo = None
         self.y_pred = None
+        self.fraccion_val = fraccion_val
+        self.validacion = None
         self.metricas = {}
 
     def cargar_viajes(self):    #Dataframe
@@ -127,9 +130,11 @@ class RegresionP1:
         dataset= agregar_variables(diario, STATION_COL)
 
         fechas = np.sort(dataset["date"].unique())
-        corte = fechas[int(len(fechas) *(1 - self.fraccion_test))]
-        self.entrenamiento = dataset[dataset["date"] <corte]
-        self.prueba = dataset[dataset["date"] >= corte]
+        corte_val = fechas[int(len(fechas) * (1 - self.fraccion_val - self.fraccion_test))]
+        corte_test = fechas[int(len(fechas) * (1 - self.fraccion_test))]
+        self.entrenamiento = dataset[dataset["date"] < corte_val]
+        self.validacion = dataset[(dataset["date"] >= corte_val) & (dataset["date"] < corte_test)]
+        self.prueba = dataset[dataset["date"] >= corte_test]
         print(f"Estaciones: {dataset[STATION_COL].nunique()} | "
               f"filas train: {len(self.entrenamiento):,} | filas test: {len(self.prueba):,}")
 
@@ -149,13 +154,16 @@ class RegresionP1:
         self.modelo = self.construir_modelo()
         self.modelo.fit(self.entrenamiento[self.todas_var], self.entrenamiento[OBJETIVO_COL])
 
-    def evaluar(self):    #Dict
-        """Calculo de MAE y RMSE sobre el conjunto de prueba."""
-        y_real = self.prueba[OBJETIVO_COL]
-        self.y_pred =np.clip(self.modelo.predict(self.prueba[self.todas_var]), 0, None)  # no hay viajes negativos
-        self.metricas = {
-            "test_mae":float(mean_absolute_error(y_real, self.y_pred)),
-            "test_rmse":float(np.sqrt(mean_squared_error(y_real, self.y_pred)))}
+    def evaluar(self):
+        """MAE y RMSE sobre validación y prueba."""
+        self.metricas = {}
+        for prefijo, df in (("val", self.validacion), ("test", self.prueba)):
+            y_pred = np.clip(self.modelo.predict(df[self.todas_var]), 0, None)  # no hay viajes negativos
+            y_real = df[OBJETIVO_COL]
+            self.metricas[f"{prefijo}_mae"] = float(mean_absolute_error(y_real, y_pred))
+            self.metricas[f"{prefijo}_rmse"] = float(np.sqrt(mean_squared_error(y_real, y_pred)))
+            if prefijo == "test":
+                self.y_pred = y_pred
         print(f"P1 baseline regresión lineal: {self.metricas}")
         return self.metricas
 
@@ -174,16 +182,23 @@ class RegresionP1:
     def registrar_mlflow(self):
         """Registra parámetros, métricas y el artefacto en MLflow."""
         mlflow.set_experiment(MLFLOW_EXPERIMENT)
-        with mlflow.start_run(run_name="P1-regresion-lineal-baseline"):
+        with mlflow.start_run(run_name="P1-regresion-lineal-baseline", tags={
+            "equipo": EQUIPO,
+            "pregunta": "P1",
+            "tipo_modelo": "baseline",
+            **git_info(),
+            "entorno": os.getenv("MIBICI_ENTORNO", "local")}):
             mlflow.log_params({
-                "fecha_inicio":self.fecha_inicio,
-                "fecha_fin":self.fecha_fin,
-                "fraccion_test":self.fraccion_test,
-                "random_state":RANDOM_STATE,
-                "modelo":"LinearRegression",
-                "lags":str(LAGS),
-                "PM_DIAS":PM_DIAS,
-            })
+                "fecha_inicio": self.fecha_inicio,
+                "fecha_fin": self.fecha_fin,
+                "fraccion_validacion": self.fraccion_val,
+                "fraccion_test": self.fraccion_test,
+                "data_version": version_datos(),
+                "random_state": RANDOM_STATE,
+                "modelo": "LinearRegression",
+                "lags": str(LAGS),
+                "PM_DIAS": PM_DIAS})
+            
             mlflow.log_metrics(self.metricas)
             mlflow.log_artifact(self.graficar())
 

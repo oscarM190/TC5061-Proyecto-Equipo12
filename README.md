@@ -1,8 +1,6 @@
 # TC5061 Proyecto MiBici, Equipo 12
 
-[![CI](https://github.com/neronapier/Proyecto-MiBici/actions/workflows/ci.yml/badge.svg)](https://github.com/neronapier/Proyecto-MiBici/actions/workflows/ci.yml)
-[![Pipeline MiBici](https://github.com/neronapier/Proyecto-MiBici/actions/workflows/pipeline.yml/badge.svg)](https://github.com/neronapier/Proyecto-MiBici/actions/workflows/pipeline.yml)
-[![Pipeline VPS](https://github.com/neronapier/Proyecto-MiBici/actions/workflows/vps.yml/badge.svg)](https://github.com/neronapier/Proyecto-MiBici/actions/workflows/vps.yml)
+[![MiBici CI/CD](https://github.com/oscarM190/TC5061-Proyecto-Equipo12/actions/workflows/mlflow.yml/badge.svg)](https://github.com/oscarM190/TC5061-Proyecto-Equipo12/actions/workflows/mlflow.yml)
 <a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>

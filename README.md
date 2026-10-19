@@ -104,6 +104,7 @@ La descarga omite los archivos que ya existen, reintenta hasta tres veces y deja
 ## Experimento base
 
 ```bash
+python -m mi_bici_experiment.modeling.train todos  # Correr todos los experimentos
 python -m mi_bici_experiment.modeling.train regresion-p1    # P1
 python -m mi_bici_experiment.modeling.train clustering-p3   # P3
 python -m pytest tests                                      # pruebas

@@ -1,25 +1,36 @@
 name: MiBici CI/CD
 
-on: 
+on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
-  train:
-    runs-on: ubuntu:latest
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mi-bici-experiment
 
     steps:
-      - name: checkout code
-        uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v7
 
-      - name: Set up python
-        uses: actions/setup-python@v2
+      - name: Set up Python
+        uses: actions/setup-python@v7
         with:
           python-version: "3.14.7"
+          cache: pip
+          cache-dependency-path: mi-bici-experiment/requirements.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-#Todo Configurar el step para ejecutar todos los procesos de carga, analisis, entrenamiento, validacion, etc.
+
+      - name: Run tests
+        run: python -m pytest tests -v

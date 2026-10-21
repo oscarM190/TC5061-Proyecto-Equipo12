@@ -90,11 +90,11 @@ def clasificacion_variable_objetivo_y_caracterizticas():
 
 @app.command()
 def main(
-    input_path: Path = RAW_DATA_DIR,
+    input_path: Path = INTERIM_DATA_DIR,
     output_path: Path = INTERIM_DATA_DIR,
 ):
-    trips_df = pd.read_parquet(input_path / "trips.parquet")
-    nomenclatura_df = pd.read_parquet(input_path / "nomenclatura.parquet")
+    trips_df = pd.read_parquet(input_path / "trips_10_2024_to_09_2026.parquet")
+    nomenclatura_df = pd.read_parquet(RAW_DATA_DIR / "nomenclatura.parquet")
 
     features_df = trips_df[
         ["Inicio_del_viaje", "Fin_del_viaje", "Origen_Id", "Destino_Id"]

@@ -8,21 +8,19 @@ import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.neighbors import NearestNeighbors
 
-from mi_bici_experiment.config import INTERIM_DATA_DIR, LAGS, PM_DIAS, PROCESSED_DATA_DIR, RAW_DATA_DIR
+from mi_bici_experiment.config import INTERIM_DATA_DIR, LAGS, PM_DIAS, PROCESSED_DATA_DIR
 from mi_bici_experiment.plots import print_balance_normalizado
 from mi_bici_experiment.config import (
     INTERIM_DATA_DIR,
     LAGS,
-    PM_DIAS,RAW_DATA_DIR,
+    PM_DIAS,
     PROCESSED_DATA_DIR,
     DESTINO_COL,
     FECHA_FIN_COL,
     FECHA_INICIO_COL,
     INTERIM_DATA_DIR,
-    P3_DEVOLUCION_S,
-    P3_DURACION_MAX_S,
+    NOMENCLATURA_CSV,
     P3_MIN_VIAJES,
-    RAW_DATA_DIR,
     STATION_COL,
 )
 
@@ -93,8 +91,18 @@ def main(
     input_path: Path = INTERIM_DATA_DIR,
     output_path: Path = INTERIM_DATA_DIR,
 ):
-    trips_df = pd.read_parquet(input_path / "trips_10_2024_to_09_2026.parquet")
-    nomenclatura_df = pd.read_parquet(RAW_DATA_DIR / "nomenclatura.parquet")
+    trips_df = pd.read_parquet(
+        input_path / "trips_10_2024_to_09_2026.parquet",
+        columns=["inicio_del_viaje", "fin_del_viaje", "origen_id", "destino_id"],
+    ).rename(
+        columns={
+            "inicio_del_viaje": "Inicio_del_viaje",
+            "fin_del_viaje": "Fin_del_viaje",
+            "origen_id": "Origen_Id",
+            "destino_id": "Destino_Id",
+        }
+    )
+    nomenclatura_df = pd.read_csv(NOMENCLATURA_CSV)
 
     features_df = trips_df[
         ["Inicio_del_viaje", "Fin_del_viaje", "Origen_Id", "Destino_Id"]
@@ -253,19 +261,19 @@ def creacion_variables_geoespaciales(dataset_ml, df):
 
 
 def filtrar_viajes_validos(viajes: pd.DataFrame) -> pd.DataFrame:
-    """Quita viajes que no reflejan uso real de una estación.
+    """Quita viajes sin estación o fecha para que puedan resumirse por día.
 
-    Se descartan registros con nulos, duraciones no positivas o mayores a 6 h y devoluciones en
-    la misma estación en menos de 60 s (la bicicleta se retira y se regresa de inmediato).
-    Si se conservaran, inflarían el uso de estaciones con fallas y deformarían su perfil.
+    Los timestamps del dataset están truncados al día, así que no permiten validar la duración
+    ni detectar devoluciones inmediatas; solo se comprueba que la fecha de llegada no sea anterior.
     """
     cols = [STATION_COL, DESTINO_COL, FECHA_INICIO_COL, FECHA_FIN_COL]
-    df = viajes.dropna(subset=cols)
-    duracion = (df[FECHA_FIN_COL] - df[FECHA_INICIO_COL]).dt.total_seconds()
-    devolucion = (df[STATION_COL] == df[DESTINO_COL]) & (duracion < P3_DEVOLUCION_S)
-    validos = (duracion > 0) & (duracion <= P3_DURACION_MAX_S) & ~devolucion
-    logger.info(f"P3: viajes descartados por duración o devolución: {(~validos).sum():,}")
-    return df[validos]
+    con_datos = viajes.dropna(subset=cols)
+    validos = con_datos[con_datos[FECHA_FIN_COL] >= con_datos[FECHA_INICIO_COL]]
+    logger.info(
+        f"P3: viajes descartados por campos nulos o fechas invertidas: "
+        f"{len(viajes) - len(validos):,}"
+    )
+    return validos
 
 
 def filtrar_periodo(viajes: pd.DataFrame, inicio: str, fin: str) -> pd.DataFrame:
@@ -277,24 +285,6 @@ def filtrar_periodo(viajes: pd.DataFrame, inicio: str, fin: str) -> pd.DataFrame
     t = viajes[FECHA_INICIO_COL]
     fin_excl = pd.Timestamp(fin) + pd.Timedelta(days=1)
     return viajes[(t >= pd.Timestamp(inicio)) & (t < fin_excl)]
-
-
-def perfil_horario(
-    viajes: pd.DataFrame, col_estacion: str, col_fecha: str, prefijo: str
-) -> pd.DataFrame:
-    """Proporción de los viajes de días hábiles que ocurre en cada hora, por estación.
-
-    Con salidas (origen e inicio) separa estaciones de origen matutino, típicas de zonas de
-    vivienda, de las de destino matutino (oficinas y escuelas), que se invierten con las
-    llegadas. Usar proporciones y no conteos evita que el volumen domine la forma del día.
-    """
-    habiles = viajes[viajes[col_fecha].dt.dayofweek < 5]
-    conteo = pd.crosstab(habiles[col_estacion], habiles[col_fecha].dt.hour)
-    conteo = conteo.reindex(columns=range(24), fill_value=0)
-    perfil = conteo.div(conteo.sum(axis=1).replace(0, np.nan), axis=0).fillna(0)
-    perfil.columns = [f"{prefijo}_h{h:02d}" for h in perfil.columns]
-    perfil.index.name = "estacion_id"
-    return perfil
 
 
 def resumen_uso(viajes: pd.DataFrame) -> pd.DataFrame:
@@ -327,16 +317,12 @@ def resumen_uso(viajes: pd.DataFrame) -> pd.DataFrame:
 def perfil_estaciones(
     viajes: pd.DataFrame, inicio: str, fin: str, min_viajes: int = P3_MIN_VIAJES
 ) -> pd.DataFrame:
-    """Tabla de P3: una fila por estación con su perfil de uso en el periodo [inicio, fin].
+    """Tabla P3 por estación con uso de fin de semana, intensidad diaria y balance.
 
-    Une el perfil horario de salidas y de llegadas en días hábiles (48 columnas) con el resumen
-    de uso. Solo entran estaciones con al menos `min_viajes` salidas en el periodo: con pocas
-    observaciones el perfil horario es ruido y genera grupos artificiales.
+    Solo entran estaciones con al menos `min_viajes` salidas en el periodo.
     """
     df = filtrar_periodo(viajes, inicio, fin)
-    salidas = perfil_horario(df, STATION_COL, FECHA_INICIO_COL, "sal")
-    llegadas = perfil_horario(df, DESTINO_COL, FECHA_FIN_COL, "lle")
-    perfil = salidas.join(llegadas, how="inner").join(resumen_uso(df), how="inner")
+    perfil = resumen_uso(df)
     activas = df.groupby(STATION_COL).size()
     perfil = perfil[perfil.index.isin(activas[activas >= min_viajes].index)]
     return perfil.fillna(0).reset_index()

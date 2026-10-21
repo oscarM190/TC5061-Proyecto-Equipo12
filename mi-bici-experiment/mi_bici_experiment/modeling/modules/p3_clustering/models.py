@@ -6,6 +6,8 @@ import mlflow
 import numpy as np
 import pandas as pd
 from loguru import logger
+from mlflow.models.signature import ModelSignature
+from mlflow.types import ColSpec, DataType, Schema
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.metrics import (
@@ -192,8 +194,16 @@ class ClusteringModel:
                 tabla.to_csv(ruta, index=False)
                 mlflow.log_artifact(str(ruta), artifact_path="tablas")
             if reducir:
+                input_example = self.perfil[cols].head(5).astype("float64")
+                signature = ModelSignature(
+                    inputs=Schema([ColSpec(DataType.double, name=column) for column in cols]),
+                    outputs=Schema([ColSpec(DataType.integer)]),
+                )
                 mlflow.sklearn.log_model(
-                    pipe, name="modelo", input_example=self.perfil[cols].head(5).astype("float64")
+                    pipe,
+                    name="modelo",
+                    signature=signature,
+                    input_example=input_example,
                 )
             logger.info(f"{run_name}: k={k} train_silhouette={metr['train_silhouette']:.3f}")
             return metr

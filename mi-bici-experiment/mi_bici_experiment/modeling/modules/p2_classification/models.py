@@ -170,7 +170,8 @@ class ClassificationModel:
             mlflow.log_artifact(
                 str(FIGURES_DIR / "balance_normalizado.png"), artifact_path="figures"
             )
-            input_example = X_train.head(5)
+            # Log floating-point inputs so nullable integer features remain schema-compatible.
+            input_example = X_train.head(5).astype("float64")
             mlflow.sklearn.log_model(
                 self.pipeline_lr,
                 name=tipo,

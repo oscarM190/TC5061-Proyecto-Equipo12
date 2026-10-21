@@ -21,23 +21,35 @@ MODELS_DIR = PROJ_ROOT / "models"
 REPORTS_DIR = PROJ_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 
-##   Regresión (P1)   ## 
+##   Regresión (P1)   ##
 RANDOM_STATE = 42
 FECHA_INICIO = "2025-10-01"
-TEST_PARTICION = 0.15 
-VAL_PARTICION = 0.15 
+TEST_PARTICION = 0.15
+VAL_PARTICION = 0.15
 FECHA_FIN = "2026-09-30"
 STATION_COL = "Origen_Id"
 FECHA_INICIO_COL = "Inicio_del_viaje"
 OBJETIVO_COL = "trips"
 LAGS = (1, 7)  # viajes del día anterior y de hace 7 días
 PM_DIAS = 7  # promedio móvil de los últimos 7 días
-FEATURES_PARQUET = INTERIM_DATA_DIR/"features.parquet"
+FEATURES_PARQUET = INTERIM_DATA_DIR / "features.parquet"
 
 ##  MLflow   ##
 MLFLOW_EXPERIMENT = "mibici-equipo12"
 
 MI_BICI_CSVS = [
+    "https://mibici.net/site/assets/files/91758/datos_abiertos_2024_10.csv",
+    "https://mibici.net/site/assets/files/93516/datos_abiertos_2024_11.csv",
+    "https://mibici.net/site/assets/files/94962/datos_abiertos_2024_12.csv",
+    "https://mibici.net/site/assets/files/97653/datos_abiertos_2025_01.csv",
+    "https://mibici.net/site/assets/files/99879/datos_abiertos_2025_02.csv",
+    "https://mibici.net/site/assets/files/101986/datos_abiertos_2025_03.csv",
+    "https://mibici.net/site/assets/files/103813/datos_abiertos_2025_04.csv",
+    "https://mibici.net/site/assets/files/105513/datos_abiertos_2025_05.csv",
+    "https://mibici.net/site/assets/files/107088/datos_abiertos_2025_06.csv",
+    "https://mibici.net/site/assets/files/108898/datos_abiertos_2025_07.csv",
+    "https://mibici.net/site/assets/files/111021/datos_abiertos_2025_08.csv",
+    "https://mibici.net/site/assets/files/113216/datos_abiertos_2025_09.csv",
     "https://mibici.net/site/assets/files/115104/datos_abiertos_2025_10.csv",
     "https://mibici.net/site/assets/files/116773/datos_abiertos_2025_11.csv",
     "https://mibici.net/site/assets/files/118153/datos_abiertos_2025_12.csv",
@@ -50,7 +62,7 @@ MI_BICI_CSVS = [
     "https://mibici.net/site/assets/files/129006/datos_abiertos_2026_07.csv",
     "https://mibici.net/site/assets/files/130362/datos_abiertos_2026_08.csv",
     "https://mibici.net/site/assets/files/131825/datos_abiertos_2026_09.csv",
-    "https://mibici.net/site/assets/files/1118/nomenclatura_2026_09.csv"
+    "https://mibici.net/site/assets/files/1118/nomenclatura_2026_09.csv",
 ]
 
 ##   Columnas y archivos que usan P2 y P3 (las generales están en la sección de P1)   ##

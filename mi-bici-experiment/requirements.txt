@@ -2,6 +2,7 @@ certifi==2026.7.22
 jupyter==1.1.1
 ipykernel==7.4.0
 pandas==3.0.6
+polars>=1.0,<2
 numpy==2.5.3
 matplotlib==3.11.2
 scipy==1.18.1

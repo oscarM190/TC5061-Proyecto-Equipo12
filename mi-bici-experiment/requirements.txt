@@ -11,7 +11,7 @@ scikit_learn==1.9.1
 seaborn==0.13.2
 tqdm==4.70.1
 typer==0.27.3
-
+jupyter==1.1.1
 
 # Instala el paquete del proyecto (modo editable) para importarlo desde notebooks/ y tests/
 -e .

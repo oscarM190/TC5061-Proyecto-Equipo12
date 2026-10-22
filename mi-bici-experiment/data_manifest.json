@@ -129,7 +129,7 @@
     {
       "path": "data/interim/trips_10_2024_to_09_2026.parquet",
       "role": "output",
-      "sha256": "2674397b6657645629e5ab89116bb0ad0b4a7d67f35c38036fdf4e1710bed4ab"
+      "sha256": "067f41e2d878eb9a861b1778096cdaa3365847ed80456e6380039934acffb66b"
     }
   ],
   "manifest_version": 1,

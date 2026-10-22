@@ -1,0 +1,28 @@
+name: mibici-equipo12
+
+python_env: python_env.yaml
+
+# Los hiperparámetros de cada pregunta se pasan como parámetros adicionales (-P k=3 -P pca=2):
+# MLflow los agrega al comando como --k 3 --pca 2. La semilla y las fechas que no se indiquen se
+# toman de mi_bici_experiment/config.py. Ver la sección "MLflow Project" del README.
+entry_points:
+  ingest:
+    command: "cd mi-bici-experiment && python -m mi_bici_experiment.dataset"
+
+  train:
+    parameters:
+      question: {type: string}
+      model: {type: string}
+    command: "cd mi-bici-experiment && python -m mi_bici_experiment.modeling.run train --question {question} --model {model}"
+
+  search:
+    parameters:
+      question: {type: string}
+      model: {type: string}
+    command: "cd mi-bici-experiment && python -m mi_bici_experiment.modeling.run search --question {question} --model {model}"
+
+  register:
+    parameters:
+      question: {type: string}
+      run_id: {type: string}
+    command: "cd mi-bici-experiment && python -m mi_bici_experiment.modeling.run register --question {question} --run_id {run_id}"

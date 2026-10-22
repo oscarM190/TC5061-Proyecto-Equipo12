@@ -86,20 +86,24 @@ def mapa_grupos(estaciones: pd.DataFrame, titulo: str, path: Path) -> Path:
 
 
 def perfil_grupos(perfil: pd.DataFrame, path: Path) -> Path:
-    """Perfil horario medio de salidas y llegadas en días hábiles de cada grupo."""
-    sal = [c for c in perfil.columns if c.startswith("sal_h")]
-    lle = [c for c in perfil.columns if c.startswith("lle_h")]
-    fig, axes = plt.subplots(1, 2, figsize=(11, 3.8), sharey=True)
-    for g, d in perfil.groupby("grupo"):
-        axes[0].plot(range(24), d[sal].mean().values, color=COLORES[g % 10], label=f"Grupo {g}")
-        axes[1].plot(range(24), d[lle].mean().values, color=COLORES[g % 10])
-    axes[0].set_title("Salidas en días hábiles")
-    axes[1].set_title("Llegadas en días hábiles")
-    for ax in axes:
-        ax.set_xlabel("Hora del día")
-    axes[0].set_ylabel("Proporción del día")
-    axes[0].legend(fontsize=8)
-    fig.suptitle("P3: patrón horario medio por grupo")
+    """Métricas medias de uso diario para cada grupo de estaciones."""
+    metrics = (
+        ("prop_fin_semana", "Salidas en fin de semana", "Proporción"),
+        ("log_viajes_dia", "Intensidad diaria", "log(1 + viajes/día)"),
+        ("balance", "Balance de la estación", "Proporción neta"),
+    )
+    fig, axes = plt.subplots(1, len(metrics), figsize=(12, 3.8))
+    for ax, (column, title, ylabel) in zip(axes, metrics):
+        means = perfil.groupby("grupo")[column].mean()
+        ax.bar(
+            means.index,
+            means.values,
+            color=[COLORES[int(group) % len(COLORES)] for group in means.index],
+        )
+        ax.set_title(title)
+        ax.set_xlabel("Grupo")
+        ax.set_ylabel(ylabel)
+    fig.suptitle("P3: métricas de uso por grupo")
     return _guardar(fig, path)
 
 

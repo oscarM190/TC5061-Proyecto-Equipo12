@@ -10,9 +10,9 @@ flowchart TB
     subgraph proyecto["Proyecto Python · mi-bici-experiment"]
         config["config.py + variables de entorno<br/>Rutas, fechas, parámetros y experimento MLflow"]
         dataset["dataset.py<br/>Descarga, lectura de CSV y conversión de fechas"]
-        raw[("data/raw/<br/>CSV, trips.parquet y nomenclatura.parquet")]
+        raw[("data/raw/<br/>CSV y nomenclatura.parquet")]
         features["features.py<br/>Cruce de viajes con estación de origen"]
-        interim[("data/interim/features.parquet<br/>Fechas, estaciones, coordenadas y capacidad")]
+        interim[("data/interim/<br/>trips_10_2024_to_09_2026.parquet y features.parquet")]
 
         subgraph entrenamiento["modeling/train.py · CLI Typer · comando todos"]
             p1["P1 · RegresionP1<br/>Viajes diarios, calendario y rezagos<br/>Regresión lineal · MAE y RMSE"]

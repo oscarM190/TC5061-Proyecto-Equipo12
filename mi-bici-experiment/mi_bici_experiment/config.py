@@ -77,6 +77,8 @@ NOMENCLATURA_CSV = RAW_DATA_DIR / "nomenclatura_2026_09.csv"
 DESTINO_COL = "destino_id"
 FECHA_FIN_COL = "fin_del_viaje"
 P1_NOMBRE_REGISTRO = f"mibici-equipo{EQUIPO}-p1-demanda"
+P2_FECHA_INICIO = "2025-10-01"
+P2_DATASET_PARQUET = PROCESSED_DATA_DIR / "p2_classification_dataset.parquet"
 
 ##   Clustering (P3)   ##
 # Entrenamiento de 12 meses (2025-07 a 2026-06, un ciclo estacional completo); la validación son

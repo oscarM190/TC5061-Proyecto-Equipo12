@@ -19,14 +19,13 @@ from mi_bici_experiment.config import (
     MLFLOW_EXPERIMENT,
     P2_DATASET_PARQUET,
     P2_FECHA_INICIO,
-    P2_FEATURES_PARQUET,
     RANDOM_STATE,
+    TRIPS_PARQUET,
 )
 from mi_bici_experiment.features import (
     agregar_balance_neto_y_normalizado,
     clasificacion_variable_objetivo_y_caracterizticas,
     creacion_variables_memoria_historica,
-    main as generar_features,
 )
 from mi_bici_experiment.plots import matriz_confucion_regresion_multiclass_clasificacion
 from mi_bici_experiment.tracking import git_info, version_datos
@@ -183,10 +182,23 @@ class ClassificationModel:
 
     @staticmethod
     def ejecutar():
-        features_path = P2_FEATURES_PARQUET
-        if not features_path.is_file():
-            generar_features()
-        df = pd.read_parquet(features_path)
+        df = pd.read_parquet(
+            TRIPS_PARQUET,
+            columns=[
+                "inicio_del_viaje",
+                "fin_del_viaje",
+                "origen_id",
+                "destino_id",
+                "dpcapacity",
+            ],
+        ).rename(
+            columns={
+                "inicio_del_viaje": "Inicio_del_viaje",
+                "fin_del_viaje": "Fin_del_viaje",
+                "origen_id": "Origen_Id",
+                "destino_id": "Destino_Id",
+            }
+        )
         balance_diario = agregar_balance_neto_y_normalizado(df)
         dataset_ml = clasificacion_variable_objetivo_y_caracterizticas(balance_diario)
         dataset_ml = creacion_variables_memoria_historica(dataset_ml)

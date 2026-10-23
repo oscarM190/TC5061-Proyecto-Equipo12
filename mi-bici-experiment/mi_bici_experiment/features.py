@@ -1,29 +1,18 @@
-from pathlib import Path
-
 from loguru import logger
 
-import typer
 import pandas as pd
 import numpy as np
 
-from mi_bici_experiment.config import INTERIM_DATA_DIR, LAGS, PM_DIAS, PROCESSED_DATA_DIR
 from mi_bici_experiment.plots import print_balance_normalizado
 from mi_bici_experiment.config import (
-    INTERIM_DATA_DIR,
     LAGS,
     PM_DIAS,
-    PROCESSED_DATA_DIR,
     DESTINO_COL,
     FECHA_FIN_COL,
     FECHA_INICIO_COL,
-    INTERIM_DATA_DIR,
-    NOMENCLATURA_CSV,
-    P2_FEATURES_PARQUET,
     P3_MIN_VIAJES,
     STATION_COL,
 )
-
-app = typer.Typer()
 
 def limpiar_viajes(viajes: pd.DataFrame, col_estacion: str, col_fecha: str) -> pd.DataFrame:
     """Quita registros sin estación o con fecha inválida y se muestra cuántos se quitaron."""
@@ -84,40 +73,6 @@ def agregar_variables(diario: pd.DataFrame, col_estacion: str) -> pd.DataFrame:
 
 def clasificacion_variable_objetivo_y_caracterizticas():
     print("TODO")
-
-@app.command()
-def main(
-    input_path: Path = INTERIM_DATA_DIR,
-    output_path: Path = PROCESSED_DATA_DIR,
-):
-    trips_df = pd.read_parquet(
-        input_path / "trips_10_2024_to_09_2026.parquet",
-        columns=["inicio_del_viaje", "fin_del_viaje", "origen_id", "destino_id"],
-    ).rename(
-        columns={
-            "inicio_del_viaje": "Inicio_del_viaje",
-            "fin_del_viaje": "Fin_del_viaje",
-            "origen_id": "Origen_Id",
-            "destino_id": "Destino_Id",
-        }
-    )
-    nomenclatura_df = pd.read_csv(NOMENCLATURA_CSV)
-
-    features_df = trips_df[
-        ["Inicio_del_viaje", "Fin_del_viaje", "Origen_Id", "Destino_Id"]
-    ].merge(
-        nomenclatura_df[["id", "latitude", "longitude", "dpcapacity"]].rename(
-            columns={"id": "Origen_Id"}
-        ),
-        on="Origen_Id",
-        how="left",
-        validate="many_to_one",
-    )
-
-    print(features_df.info())
-
-    output_path.mkdir(parents=True, exist_ok=True)
-    features_df.to_parquet(output_path / P2_FEATURES_PARQUET.name, index=False)
 
 def agregar_balance_neto_y_normalizado(df):
     df['Fecha'] = df['Inicio_del_viaje'].dt.floor('d')
@@ -326,7 +281,3 @@ def info_estaciones(nomenclatura: pd.DataFrame) -> pd.DataFrame:
     )
     info["municipio"] = info["nombre"].str.extract(r"([A-Z]{3})-\d+")[0].fillna("OTRO")
     return info[["estacion_id", "nombre", "lat", "lon", "capacidad", "municipio"]]
-
-
-if __name__ == "__main__":
-    app()

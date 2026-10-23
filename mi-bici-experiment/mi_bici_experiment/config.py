@@ -71,7 +71,6 @@ NOMENCLATURA_CSV = RAW_DATA_DIR / "nomenclatura_2026_09.csv"
 DESTINO_COL = "destino_id"
 FECHA_FIN_COL = "fin_del_viaje"
 P2_FECHA_INICIO = "2025-10-01"
-P2_FEATURES_PARQUET = PROCESSED_DATA_DIR / "p2_features.parquet"
 P2_DATASET_PARQUET = PROCESSED_DATA_DIR / "p2_classification_dataset.parquet"
 
 ##   Clustering (P3)   ##

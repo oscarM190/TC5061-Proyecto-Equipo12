@@ -6,12 +6,10 @@ mlflow_tracing==3.17.0
 numpy==2.5.4
 pandas==3.0.6
 polars==2.0.0
+pytest==9.1.1
 python-dotenv==1.2.4
 scikit_learn==1.9.1
 seaborn==0.13.2
 tqdm==4.70.1
 typer==0.27.3
 jupyter==1.1.1
-
-# Instala el paquete del proyecto (modo editable) para importarlo desde notebooks/ y tests/
--e .

@@ -2,14 +2,22 @@ import os
 
 import matplotlib.pyplot as plt
 import mlflow
+import mlflow.data
+import mlflow.sklearn
 import numpy as np
 import pandas as pd
+import typer
+from lightgbm import LGBMRegressor
+from mlflow.models import infer_signature
+
+from mlflow import MlflowClient
 from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
+from mi_bici_experiment import config
 from mi_bici_experiment.config import (
     EQUIPO,
     FECHA_FIN,
@@ -20,11 +28,14 @@ from mi_bici_experiment.config import (
     LAGS,
     MLFLOW_EXPERIMENT,
     OBJETIVO_COL,
+    P1_COMBINACIONES,
     PM_DIAS,
+    PROJ_ROOT,
     RANDOM_STATE,
     STATION_COL,
     TEST_PARTICION,
     VAL_PARTICION,
+    P1_NOMBRE_REGISTRO
 )
 from mi_bici_experiment.features import (
     agregar_variables,
@@ -32,6 +43,8 @@ from mi_bici_experiment.features import (
     limpiar_viajes,
 )
 from mi_bici_experiment.tracking import git_info, version_datos
+
+MANIFIESTO = PROJ_ROOT / "data_manifest.json"
 
 
 class RegressionModel:
@@ -146,11 +159,11 @@ class RegressionModel:
             tags={
                 "equipo": EQUIPO,
                 "pregunta": "P1",
+                "model_family": "linear",
                 "tipo_modelo": "baseline",
                 **git_info(),
                 "entorno": os.getenv("MIBICI_ENTORNO", "local"),
-            },
-        ):
+            }):
             mlflow.log_params(
                 {
                     "fecha_inicio": self.fecha_inicio,
@@ -173,3 +186,188 @@ class RegressionModel:
         self.entrenar()
         self.evaluar()
         self.registrar_mlflow()
+
+
+# ----------------------------------------------------------------------.
+# Entrega 2: LightGBM con búsqueda de hiperparámetros (nested runs)
+# ---------------------------------------------------------------------
+class RegressionLGBM(RegressionModel):
+    """Misma preparación de datos y partición que el baseline, solo cambia el modelo."""
+    hiperparametros:dict ={}
+
+    def construir_modelo(self):
+        pipeline = super().construir_modelo()
+        pipeline.set_params(
+            modelo=LGBMRegressor(random_state=RANDOM_STATE, verbose=-1, **self.hiperparametros))
+        return pipeline
+
+    def registrar_corrida(self):
+        """Parámetros, métricas, gráficas, datos, configuración y modelo de una run candidata."""
+        X = self.prueba[self.todas_var]
+        mlflow.log_params(
+            {
+                "fecha_inicio": self.fecha_inicio,
+                "fecha_fin": self.fecha_fin,
+                "fraccion_validacion": self.fraccion_val,
+                "fraccion_test": self.fraccion_test,
+                "data_version": version_datos(),
+                "random_state": RANDOM_STATE,
+                "modelo": "LGBMRegressor",
+                **self.hiperparametros
+            })
+        mlflow.log_metrics(self.metricas)
+
+        # Datos y configuración
+        entrenamiento = self.entrenamiento[self.todas_var + [OBJETIVO_COL]]
+        mlflow.log_input(mlflow.data.from_pandas(entrenamiento, name="train_p1"), context="training")
+        mlflow.log_artifact(str(MANIFIESTO), artifact_path="data")
+        mlflow.log_artifact(config.__file__, artifact_path="config")
+
+        # Gráficas real vs predicho y residuales (test)
+        por_dia = (
+            self.prueba[["date"]]
+            .assign(real=self.prueba[OBJETIVO_COL].to_numpy(), predicho=self.y_pred)
+            .groupby("date")
+            .sum()
+        )
+        fig, ax = plt.subplots()
+        por_dia.plot(ax=ax, title="Viajes diarios totales")
+        mlflow.log_figure(fig, "plots/real_vs_predicho.png")
+        plt.close(fig)
+
+        residuales = self.prueba[OBJETIVO_COL].to_numpy()-self.y_pred
+        fig, ax = plt.subplots()
+        ax.hist(residuales, bins=50)
+        ax.set_title("Residuales (con test para P1)")
+        mlflow.log_figure(fig, "plots/residuales.png")
+        plt.close(fig)
+
+        # Modelo con firma y ejemplo de entrada
+        mlflow.sklearn.log_model(
+            self.modelo,
+            artifact_path="model",
+            signature=infer_signature(X, self.y_pred),
+            input_example=X.head(5),
+            skops_trusted_types=[
+                "collections.OrderedDict",
+                "lightgbm.basic.Booster",
+                "lightgbm.sklearn.LGBMRegressor"
+            ])
+
+# ----------------------------------
+# Model Registry
+# ---------------------------------
+def promover_a_produccion(run_id: str):
+    """Registra el mejor modelo, le pone descripción y su linaje, y le asigna el alias "champion"."""
+    client = MlflowClient()
+    version = mlflow.register_model(f"runs:/{run_id}/model", P1_NOMBRE_REGISTRO).version
+
+    client.update_registered_model(
+        P1_NOMBRE_REGISTRO,
+        description="P1:predicción de viajes diarios por estación usando el modelo LightGBM.")
+    client.update_model_version(
+        P1_NOMBRE_REGISTRO, version, description=f"Mejor corrida por val_mae (run {run_id}).")
+
+    for clave, valor in {**git_info(), "data_version": version_datos()}.items():
+        client.set_model_version_tag(P1_NOMBRE_REGISTRO, version, clave, str(valor))
+    client.set_registered_model_alias(P1_NOMBRE_REGISTRO, "champion",version)
+
+    mlflow.sklearn.load_model(f"models:/{P1_NOMBRE_REGISTRO}@champion")
+    print(f"{P1_NOMBRE_REGISTRO} v{version}cargado con alias champion")
+
+
+    
+def buscar_hiperparametros(combinaciones=None, fecha_inicio=FECHA_INICIO, fecha_fin=FECHA_FIN):
+    """Baseline con el run padre el cual contiene un hijo por combinación y gráfica de comparación como artefacto."""
+    combinaciones= combinaciones or P1_COMBINACIONES
+    modelo = RegressionLGBM(fecha_inicio, fecha_fin)
+    modelo.preparar_datos()
+
+    mlflow.set_experiment(MLFLOW_EXPERIMENT)
+
+    # Baseline (regresión lineal), como otra run independiente
+    baseline = RegressionModel(fecha_inicio, fecha_fin)
+    baseline.entrenamiento = modelo.entrenamiento
+    baseline.validacion = modelo.validacion
+    baseline.prueba = modelo.prueba
+    baseline.entrenar()
+    metricas_base = dict(baseline.evaluar())
+    baseline.registrar_mlflow()
+
+    etiquetas = {
+        "equipo": EQUIPO,
+        "pregunta": "P1",
+        "model_family": "lightgbm",
+        **git_info(),
+        "entorno": os.getenv("MIBICI_ENTORNO", "local")}
+
+
+    resultados = []
+    with mlflow.start_run():  # run padre, la búsqueda del mejor modelo
+        mlflow.set_tag("mlflow.runName", "P1-lightgbm-final")
+        mlflow.set_tags({**etiquetas, "stage_of_work": "search"})
+
+        for nombre, hiperparametros in combinaciones.items():
+            modelo.hiperparametros = hiperparametros
+            modelo.entrenar()
+            modelo.evaluar()
+            with mlflow.start_run(run_name=f"P1-lightgbm-{nombre}", nested=True) as hijo:
+                mlflow.set_tags({**etiquetas, "stage_of_work": "candidate"})
+                modelo.registrar_corrida()
+            resultados.append((modelo.metricas["val_mae"], hijo.info.run_id, nombre, dict(modelo.metricas)))
+
+        mejor_mae, mejor_run, mejor_nombre,metricas_mejor= min(resultados, key=lambda r:r[0])
+
+        # Se busca la mejor run o combinación y se registran sus métricas y parámetros en el run padre
+        mlflow.log_params({"mejor_combinacion": mejor_nombre, **combinaciones[mejor_nombre]})
+        mlflow.log_metrics({f"best_{k}": v for k, v in metricas_mejor.items()})
+        mlflow.log_metrics({f"baseline_{k}": v for k, v in metricas_base.items()})
+        for k in ("val_mae", "test_mae"):
+            mejora = (metricas_base[k] - metricas_mejor[k]) /metricas_base[k]*100
+            mlflow.log_metric(f"mejora_{k}_pct", mejora)
+        mlflow.set_tag("best_run_id", mejor_run)
+
+        # Gráfica baseline vs mejor modelo
+        nombres = ["val_mae", "test_mae", "val_rmse", "test_rmse"]
+        x = np.arange(len(nombres))
+        fig, ax = plt.subplots(figsize=(8, 5))
+        ax.bar(x - 0.2, [metricas_base[n] for n in nombres], 0.4, label="Baseline (regresión lineal)")
+        ax.bar(x + 0.2, [metricas_mejor[n] for n in nombres], 0.4, label=f"LightGBM ({mejor_nombre})")
+        ax.set_xticks(x)
+        ax.set_xticklabels(nombres)
+        ax.set_ylabel("Error (viajes por estación y día)")
+        ax.set_title("P1: baseline vs mejor modelo (menor valor es mejor modelo)")
+        ax.legend()
+        mlflow.log_figure(fig, "plots/baseline_vs_mejor.png")
+        plt.close(fig)
+
+    promover_a_produccion(mejor_run)
+
+
+app = typer.Typer()
+
+@app.command()
+def main(
+    n_estimators: int | None = None,
+    learning_rate: float | None = None,
+    num_leaves: int | None = None,
+    min_child_samples: int | None = None,
+    fecha_inicio: str = FECHA_INICIO,
+    fecha_fin: str = FECHA_FIN):
+    """Sin hiperparámetros corre la búsqueda con los valores que hay en config.py, 
+    con algún parámetro, entrena esa combinación nada más."""
+    elegidos = {
+        "n_estimators": n_estimators,
+        "learning_rate": learning_rate,
+        "num_leaves": num_leaves,
+        "min_child_samples": min_child_samples}
+    elegidos = {k: v for k, v in elegidos.items() if v is not None}
+    combinaciones = None
+    if elegidos:
+        # Parte de la combinación del "modelo_3" de config.py
+        combinaciones = {"personalizada": {**P1_COMBINACIONES["modelo_3"], **elegidos}}
+    buscar_hiperparametros(combinaciones, fecha_inicio, fecha_fin)
+
+
+if __name__ == "__main__":
+    app()

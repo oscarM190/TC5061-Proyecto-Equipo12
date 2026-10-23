@@ -34,6 +34,12 @@ LAGS = (1, 7)  # viajes del día anterior y de hace 7 días
 PM_DIAS = 7  # promedio móvil de los últimos 7 días
 TRIPS_PARQUET = INTERIM_DATA_DIR / "trips_10_2024_to_09_2026.parquet"
 
+P1_COMBINACIONES = {
+    "modelo_1":  {"n_estimators": 200, "learning_rate": 0.10, "num_leaves": 15},
+    "modelo_2":  {"n_estimators": 300, "learning_rate": 0.05, "num_leaves": 25, "min_child_samples": 50},
+    "modelo_3": {"n_estimators": 400, "learning_rate": 0.05, "num_leaves": 31}}
+
+
 ##  MLflow   ##
 MLFLOW_EXPERIMENT = "mibici-equipo12"
 
@@ -70,6 +76,7 @@ EQUIPO = "12"
 NOMENCLATURA_CSV = RAW_DATA_DIR / "nomenclatura_2026_09.csv"
 DESTINO_COL = "destino_id"
 FECHA_FIN_COL = "fin_del_viaje"
+P1_NOMBRE_REGISTRO = f"mibici-equipo{EQUIPO}-p1-demanda"
 P2_FECHA_INICIO = "2025-10-01"
 P2_DATASET_PARQUET = PROCESSED_DATA_DIR / "p2_classification_dataset.parquet"
 

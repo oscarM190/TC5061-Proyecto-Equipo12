@@ -13,3 +13,4 @@ seaborn==0.13.2
 tqdm==4.70.1
 typer==0.27.3
 jupyter==1.1.1
+lightgbm==4.7.0

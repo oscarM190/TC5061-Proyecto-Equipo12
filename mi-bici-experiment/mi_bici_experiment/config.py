@@ -72,10 +72,15 @@ DESTINO_COL = "destino_id"
 FECHA_FIN_COL = "fin_del_viaje"
 
 ##   Clustering (P3)   ##
-# Los grupos se ajustan con 2025-10 a 2026-06; 2026-07 a 2026-09 solo mide su estabilidad
+# Entrenamiento de 12 meses (2025-07 a 2026-06, un ciclo estacional completo); la validación son
+# sus 3 últimos meses (ajuste hasta 2026-03) y la prueba de estabilidad, 2026-07 a FECHA_FIN.
+P3_INICIO_ENTRENAMIENTO = "2025-07-01"
 P3_FIN_ENTRENAMIENTO = "2026-06-30"
+P3_MESES_VALIDACION = 3
+P3_MIN_PROP_GRUPO = 0.05  # grupos con menos del 5 % de las estaciones no son accionables
 P3_MIN_VIAJES = 300  # salidas mínimas en entrenamiento para que el perfil sea estable
 P3_K_BASELINE = 4
+P3_K_CANDIDATO = 3  # modelo elegido en la actividad 5 (k-means + PCA, ver README)
 P3_K_CANDIDATOS = [3, 4, 5, 6, 7, 8]
 P3_PCA_COMPONENTES = 2
 P3_N_INIT = 20  # inicializaciones de k-means; se queda la de menor inercia

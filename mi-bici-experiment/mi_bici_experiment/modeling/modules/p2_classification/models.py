@@ -15,18 +15,17 @@ from sklearn.preprocessing import StandardScaler
 from mi_bici_experiment.config import (
     EQUIPO,
     FECHA_FIN,
-    FECHA_INICIO,
     FIGURES_DIR,
-    INTERIM_DATA_DIR,
     MLFLOW_EXPERIMENT,
+    P2_DATASET_PARQUET,
+    P2_FECHA_INICIO,
     RANDOM_STATE,
+    TRIPS_PARQUET,
 )
 from mi_bici_experiment.features import (
     agregar_balance_neto_y_normalizado,
     clasificacion_variable_objetivo_y_caracterizticas,
-    creacion_variables_geoespaciales,
     creacion_variables_memoria_historica,
-    main as generar_features,
 )
 from mi_bici_experiment.plots import matriz_confucion_regresion_multiclass_clasificacion
 from mi_bici_experiment.tracking import git_info, version_datos
@@ -38,20 +37,20 @@ class ClassificationModel:
     def __init__(self, dataset_ml: pd.DataFrame):
         self.dataset_ml = dataset_ml
         self.features = [
-            "dpcapacity",
             "Dia_Semana",
             "Es_Fin_Semana",
             "Mes",
-            "Balance_Lag_1",
-            "Balance_Lag_2",
             "Balance_Lag_7",
-            "Estado_Lag_1",
-            "Estado_Lag_7",
-            "Media_Movil_3d",
-            "Media_Movil_7d",
-            "Volatilidad_3d",
-            "Zona_Espacial",
-            "Densidad_500m",
+            "Llegadas_Lag_1",
+            "Llegadas_Lag_2",
+            "Llegadas_Lag_3",
+            "Llegadas_Lag_7",
+            "Salidas_Lag_1",
+            "Salidas_Lag_2",
+            "Salidas_Lag_3",
+            "Salidas_Lag_7",
+            "Media_Movil_7d_Llegadas",
+            "Media_Movil_7d_Salidas",
         ]
 
         # Construcción del Pipeline de Machine Learning
@@ -121,7 +120,7 @@ class ClassificationModel:
                     "n_train": len(X_train),
                     "n_validacion": len(X_val),
                     "n_test": len(X_test),
-                    "fecha_inicio": FECHA_INICIO,
+                    "fecha_inicio": P2_FECHA_INICIO,
                     "fecha_fin": FECHA_FIN,
                     "random_state": RANDOM_STATE,
                 }
@@ -183,13 +182,35 @@ class ClassificationModel:
 
     @staticmethod
     def ejecutar():
-        features_path = INTERIM_DATA_DIR / "features.parquet"
-        if not features_path.is_file():
-            generar_features()
-        df = pd.read_parquet(features_path)
+        df = pd.read_parquet(
+            TRIPS_PARQUET,
+            columns=[
+                "inicio_del_viaje",
+                "fin_del_viaje",
+                "origen_id",
+                "destino_id",
+                "dpcapacity",
+            ],
+        ).rename(
+            columns={
+                "inicio_del_viaje": "Inicio_del_viaje",
+                "fin_del_viaje": "Fin_del_viaje",
+                "origen_id": "Origen_Id",
+                "destino_id": "Destino_Id",
+            }
+        )
         balance_diario = agregar_balance_neto_y_normalizado(df)
         dataset_ml = clasificacion_variable_objetivo_y_caracterizticas(balance_diario)
         dataset_ml = creacion_variables_memoria_historica(dataset_ml)
-        dataset_ml = creacion_variables_geoespaciales(dataset_ml, df)
+        # Keep earlier rows as history for lag calculations, but train only from this date onward.
+        dataset_ml = dataset_ml.loc[
+            dataset_ml["Fecha"] >= pd.Timestamp(P2_FECHA_INICIO)
+        ].copy()
+
+        # Persist the exact date-filtered dataset used by the P2 model.
+        P2_DATASET_PARQUET.parent.mkdir(parents=True, exist_ok=True)
+        dataset_ml.to_parquet(P2_DATASET_PARQUET, index=False)
+        dataset_ml = pd.read_parquet(P2_DATASET_PARQUET)
+
         modelo = ClassificationModel(dataset_ml)
         modelo.entrenar()

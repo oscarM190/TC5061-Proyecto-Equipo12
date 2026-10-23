@@ -5,8 +5,6 @@ from loguru import logger
 import typer
 import pandas as pd
 import numpy as np
-from sklearn.cluster import KMeans
-from sklearn.neighbors import NearestNeighbors
 
 from mi_bici_experiment.config import INTERIM_DATA_DIR, LAGS, PM_DIAS, PROCESSED_DATA_DIR
 from mi_bici_experiment.plots import print_balance_normalizado
@@ -20,6 +18,7 @@ from mi_bici_experiment.config import (
     FECHA_INICIO_COL,
     INTERIM_DATA_DIR,
     NOMENCLATURA_CSV,
+    P2_FEATURES_PARQUET,
     P3_MIN_VIAJES,
     STATION_COL,
 )
@@ -89,7 +88,7 @@ def clasificacion_variable_objetivo_y_caracterizticas():
 @app.command()
 def main(
     input_path: Path = INTERIM_DATA_DIR,
-    output_path: Path = INTERIM_DATA_DIR,
+    output_path: Path = PROCESSED_DATA_DIR,
 ):
     trips_df = pd.read_parquet(
         input_path / "trips_10_2024_to_09_2026.parquet",
@@ -118,7 +117,7 @@ def main(
     print(features_df.info())
 
     output_path.mkdir(parents=True, exist_ok=True)
-    features_df.to_parquet(output_path / "features.parquet", index=False)
+    features_df.to_parquet(output_path / P2_FEATURES_PARQUET.name, index=False)
 
 def agregar_balance_neto_y_normalizado(df):
     df['Fecha'] = df['Inicio_del_viaje'].dt.floor('d')
@@ -185,76 +184,52 @@ def creacion_variables_memoria_historica(dataset_ml):
     # Asegurar de que el dataset esté perfectamente ordenado
     dataset_ml = dataset_ml.sort_values(['Estacion_Id', 'Fecha'])
 
-    # Variables de Retardo (Lags)
-    # ¿Cómo se comportó el balance ayer y antier?
-    dataset_ml['Balance_Lag_1'] = dataset_ml.groupby('Estacion_Id')['Balance_Normalizado'].shift(1)
-    dataset_ml['Balance_Lag_2'] = dataset_ml.groupby('Estacion_Id')['Balance_Normalizado'].shift(2)
-
     # ¿Cómo se comportó el balance el mismo día de la semana pasada?
     dataset_ml['Balance_Lag_7'] = dataset_ml.groupby('Estacion_Id')['Balance_Normalizado'].shift(7)
 
-    # Estado categórico previo (para capturar transiciones de estado)
-    dataset_ml['Estado_Lag_1'] = dataset_ml.groupby('Estacion_Id')['Estado_Actual'].shift(1)
-    dataset_ml['Estado_Lag_7'] = dataset_ml.groupby('Estacion_Id')['Estado_Actual'].shift(7)
+    # Volumen de llegadas y salidas en la misma estación en días anteriores.
+    columnas_lag = []
+    for lag in (1, 2, 3, 7):
+        for columna in ('Llegadas', 'Salidas'):
+            nombre_lag = f'{columna}_Lag_{lag}'
+            dataset_ml[nombre_lag] = dataset_ml.groupby('Estacion_Id')[columna].shift(lag)
+            columnas_lag.append(nombre_lag)
 
-    # Ventanas Móviles (Rolling Windows)
-    # Promedio del balance en los últimos 3 y 7 días (captura la tendencia suavizada)
-    dataset_ml['Media_Movil_3d'] = dataset_ml.groupby('Estacion_Id')['Balance_Normalizado'].transform(
-        lambda x: x.rolling(window=3, min_periods=1).mean()
-    )
-    dataset_ml['Media_Movil_7d'] = dataset_ml.groupby('Estacion_Id')['Balance_Normalizado'].transform(
+    # Promedios móviles de 7 días para las llegadas y las salidas.
+    dataset_ml['Media_Movil_7d_Llegadas'] = dataset_ml.groupby('Estacion_Id')['Llegadas'].transform(
         lambda x: x.rolling(window=7, min_periods=1).mean()
     )
-
-    # Volatilidad en los últimos 3 días (estaciones con mucha varianza son más impredecibles)
-    dataset_ml['Volatilidad_3d'] = dataset_ml.groupby('Estacion_Id')['Balance_Normalizado'].transform(
-        lambda x: x.rolling(window=3, min_periods=1).std()
-    ).fillna(0) # Llenamos con 0 donde no hay suficientes datos para desviación estándar
+    dataset_ml['Media_Movil_7d_Salidas'] = dataset_ml.groupby('Estacion_Id')['Salidas'].transform(
+        lambda x: x.rolling(window=7, min_periods=1).mean()
+    )
 
     #  Limpieza post-ingeniería
     # Al hacer shift(7), los primeros 7 días de cada estación quedarán con nulos en Lag_7.
     # Para entrenar modelos (como Random Forest o XGBoost), es mejor eliminar estos registros incompletos.
-    dataset_ml = dataset_ml.dropna(subset=['Balance_Lag_7', 'Estado_Lag_7']).copy()
+    dataset_ml = dataset_ml.dropna(subset=['Balance_Lag_7', *columnas_lag]).copy()
 
-    # Convertir variables de estado a enteros tras el dropna
-    dataset_ml['Estado_Lag_1'] = dataset_ml['Estado_Lag_1'].astype(int)
-    dataset_ml['Estado_Lag_7'] = dataset_ml['Estado_Lag_7'].astype(int)
-
-    print(dataset_ml[['Fecha', 'Estacion_Id', 'Balance_Lag_1', 'Media_Movil_3d', 'Riesgo_T1']].head(10))
+    print(
+        dataset_ml[
+            [
+                'Fecha',
+                'Estacion_Id',
+                'Balance_Lag_7',
+                'Llegadas_Lag_1',
+                'Llegadas_Lag_2',
+                'Llegadas_Lag_3',
+                'Llegadas_Lag_7',
+                'Salidas_Lag_1',
+                'Salidas_Lag_2',
+                'Salidas_Lag_3',
+                'Salidas_Lag_7',
+                'Media_Movil_7d_Llegadas',
+                'Media_Movil_7d_Salidas',
+                'Riesgo_T1',
+            ]
+        ].head(10)
+    )
     return dataset_ml
 
-def creacion_variables_geoespaciales(dataset_ml, df):
-    # Extraer el catálogo estático de estaciones con sus coordenadas
-    # df es dataframe original crudo
-    estaciones_geo = df[['Origen_Id', 'latitude', 'longitude']].drop_duplicates()
-    estaciones_geo = estaciones_geo.rename(columns={'Origen_Id': 'Estacion_Id'}).dropna()
-    print(dataset_ml.info())
-    print(dataset_ml.info())
-    # 2. Macro-arquitectura: Creación de Clústeres Urbanos (Zonas)
-    # Agrupamos las estaciones en 10 zonas geográficas distintas
-    kmeans = KMeans(n_clusters=10, random_state=42, n_init=10)
-    estaciones_geo['Zona_Espacial'] = kmeans.fit_predict(estaciones_geo[['latitude', 'longitude']])
-
-    # 3. Micro-resiliencia: Densidad de red (Estaciones a menos de ~500 metros)
-    # Convertimos coordenadas a radianes para usar la fórmula Haversine (distancia real en esfera)
-    coords_rad = np.radians(estaciones_geo[['latitude', 'longitude']])
-
-    # Radio de la Tierra ~6371 km. Buscamos vecinos en 0.5 km (500 metros).
-    radio_radianes = 0.5 / 6371.0 
-    nn = NearestNeighbors(radius=radio_radianes, metric='haversine')
-    nn.fit(coords_rad)
-
-    # Calculamos cuántas estaciones caen en ese radio (restando 1 para excluir la estación misma)
-    vecinos = nn.radius_neighbors(coords_rad, return_distance=False)
-    estaciones_geo['Densidad_500m'] = [len(v) - 1 for v in vecinos]
-
-    # 4. Consolidación de la Arquitectura de Datos
-    # Unimos estas características estáticas al dataset histórico de Machine Learning
-    dataset_ml = pd.merge(dataset_ml, estaciones_geo, on='Estacion_Id', how='left')
-
-    # Verificamos la matriz final
-    print(dataset_ml[['Estacion_Id', 'Zona_Espacial', 'Densidad_500m', 'Balance_Lag_1', 'Riesgo_T1']].head())
-    return dataset_ml
 # ---------------------------------------------------------------------------------------------
 # P3: grupos de estaciones con patrones de uso similares
 # ---------------------------------------------------------------------------------------------

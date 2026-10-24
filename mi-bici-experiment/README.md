@@ -47,6 +47,34 @@ usar instalaciones de Python en macOS sin un almacén de certificados configurad
 Si tu red utiliza una CA privada, puedes agregar su archivo PEM con
 `--ca-file /ruta/certificados.pem`.
 
+## P2: búsqueda de hiperparámetros de Random Forest
+
+Desde `mi-bici-experiment/`, sin opciones se ejecuta el baseline logístico y se comparan las
+configuraciones de `P2_COMBINACIONES` en `config.py`:
+
+```bash
+python -m mi_bici_experiment.modeling.modules.p2_classification.models
+```
+
+Si se proporciona al menos un hiperparámetro, se entrena únicamente un Random Forest personalizado.
+Los valores omitidos se toman de `P2_COMBINACIONES["modelo_3"]`:
+
+```bash
+python -m mi_bici_experiment.modeling.modules.p2_classification.models \
+  --n-estimators 300 --max-depth 16 --min-samples-leaf 5
+```
+
+Opciones: `--n-estimators`, `--max-depth`, `--min-samples-split`, `--min-samples-leaf`,
+`--max-features` (`sqrt`, `log2` o una fracción entre 0 y 1), `--bootstrap/--no-bootstrap`,
+`--max-samples`, `--class-weight` (`balanced`, `balanced_subsample` o `none`),
+`--random-state` y `--n-jobs`. `--no-bootstrap` desactiva el muestreo por árbol;
+no se combina con `--max-samples`. La lista completa está en `--help`.
+
+La búsqueda registra un run padre `P2-random-forest-search` y un hijo por configuración con
+sus parámetros, métricas y artefactos. El mejor candidato se elige por F1 macro de validación,
+sin usar prueba para seleccionar. Su identificador queda en `best_run_id` del padre y el
+resumen de candidatos en `busqueda/resultados.json`.
+
 ## P3: grupos de estaciones con patrones de uso similares
 
 Pregunta: ¿qué grupos de estaciones comparten patrones de uso y dónde se ubican en la ciudad?

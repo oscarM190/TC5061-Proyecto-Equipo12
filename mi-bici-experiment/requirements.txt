@@ -1,3 +1,4 @@
+certifi==2026.7.22
 loguru==0.7.3
 matplotlib==3.11.2
 mlflow==3.17.0

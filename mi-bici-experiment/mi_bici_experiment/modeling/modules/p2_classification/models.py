@@ -413,7 +413,7 @@ class ClassificationModel:
         return mejor
 
     @staticmethod
-    def ejecutar(hiperparametros=None):
+    def ejecutar(hiperparametros=None, solo_baseline=False):
         df = pd.read_parquet(
             TRIPS_PARQUET,
             columns=[
@@ -442,6 +442,8 @@ class ClassificationModel:
         dataset_ml.to_parquet(P2_DATASET_PARQUET, index=False)
         dataset_ml = pd.read_parquet(P2_DATASET_PARQUET)
         modelo = ClassificationModel(dataset_ml)
+        if solo_baseline:
+            return modelo.entrenar_regresion_logistica()
         if hiperparametros is None:
             modelo.entrenar_regresion_logistica()
             return modelo.buscar_hiperparametros()

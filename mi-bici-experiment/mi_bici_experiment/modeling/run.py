@@ -62,13 +62,17 @@ def _p3(accion: str, model: str, run_id: str, extra: list[str]) -> None:
 
 
 def _baseline_actual(question: str, extra: list[str]) -> None:
-    """Conserva la ejecución del baseline de P1."""
+    """Ejecuta únicamente el baseline de regresión (P1) o logístico (P2)."""
     if extra:
         logger.warning(f"{question}: se ignoran {extra}; el modelo aún no está parametrizado")
     if question == "p1":
         from mi_bici_experiment.modeling.modules.p1_regression.models import RegressionModel
 
         RegressionModel().ejecutar()
+    elif question == "p2":
+        from mi_bici_experiment.modeling.modules.p2_classification.models import ClassificationModel
+
+        ClassificationModel.ejecutar(solo_baseline=True)
 
 
 def _argumentos_p2(extra: list[str]) -> argparse.Namespace:
@@ -97,6 +101,9 @@ def _argumentos_p2(extra: list[str]) -> argparse.Namespace:
 def _p2(accion: str, model: str, run_id: str, extra: list[str]) -> None:
     from mi_bici_experiment.modeling.modules.p2_classification import models as p2
 
+    if accion == "train" and model in ("logistic_regression", "regresion_logistica", "baseline"):
+        _baseline_actual("p2", extra)
+        return
     if model not in ("random_forest", "random-forest", "rf"):
         raise SystemExit("p2: usa --model random_forest")
     if accion not in ("train", "search"):

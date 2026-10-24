@@ -60,6 +60,38 @@ def _p3(accion: str, model: str, run_id: str, extra: list[str]) -> None:
                               a.stage)
     logger.info(f"P3 {model}: {metricas}")
 
+def _argumentos_p1(extra: list[str]) -> argparse.Namespace:
+    p = argparse.ArgumentParser(prog="p1")
+    p.add_argument("--n_estimators", type=int, default=None)
+    p.add_argument("--learning_rate", type=float, default=None)
+    p.add_argument("--num_leaves", type=int, default=None)
+    p.add_argument("--min_child_samples", type=int, default=None)
+    p.add_argument("--inicio", default=None, help="Fecha de inicio.")
+    p.add_argument("--fin", default=None, help="Fecha de fin.")
+    return p.parse_args(extra)
+
+
+def _p1(accion: str, run_id: str, extra: list[str]) -> None:
+    from mi_bici_experiment.config import FECHA_FIN, FECHA_INICIO, P1_COMBINACIONES
+    from mi_bici_experiment.modeling.modules.p1_regression import models as p1
+
+    a = _argumentos_p1(extra)
+    if accion == "register":
+        p1.promover_a_produccion(run_id)
+        return
+
+    inicio = a.inicio or FECHA_INICIO
+    fin = a.fin or FECHA_FIN
+    elegidos = {
+        k: getattr(a, k)
+        for k in ("n_estimators", "learning_rate", "num_leaves", "min_child_samples")
+        if getattr(a, k) is not None
+    }
+    if accion == "train" and elegidos:
+        base = next(iter(P1_COMBINACIONES.values()))
+        p1.buscar_hiperparametros({"personalizada": {**base, **elegidos}}, inicio, fin)
+    else: 
+        p1.buscar_hiperparametros(None, inicio, fin)
 
 def _baseline_actual(question: str, extra: list[str]) -> None:
     """Ejecuta únicamente el baseline de regresión (P1) o logístico (P2)."""
@@ -128,6 +160,8 @@ def main(argv: list[str] | None = None) -> None:
         _p3(args.accion, args.model, args.run_id, extra)
     elif args.question == "p2":
         _p2(args.accion, args.model, args.run_id, extra)
+    elif args.question == "p1":
+        _p1(args.accion, args.run_id, extra)
     elif args.accion == "train":
         _baseline_actual(args.question, extra)
     else:

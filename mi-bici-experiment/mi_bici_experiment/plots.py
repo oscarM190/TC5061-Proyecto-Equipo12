@@ -37,13 +37,16 @@ def print_balance_normalizado(balance_diario):
 
     return _guardar(fig, FIGURES_DIR / "balance_normalizado.png")
     
-def matriz_confucion_regresion_multiclass_clasificacion(y_test, y_pred, conjunto=None):
+def matriz_confucion_regresion_multiclass_clasificacion(
+    y_test, y_pred, conjunto=None,
+    modelo="Regresión Logística Multinomial", nombre_base="matriz_confusion_multinomial",
+):
     cm = confusion_matrix(y_test, y_pred, labels=[0, 1, 2])
     fig, ax = plt.subplots(figsize=(8, 6))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
                 xticklabels=['Sin Bicis', 'Balanceado', 'Sin Anclajes'],
                 yticklabels=['Sin Bicis', 'Balanceado', 'Sin Anclajes'])
-    title = 'Matriz de Confusión - Regresión Logística Multinomial'
+    title = f'Matriz de Confusión - {modelo}'
     if conjunto is not None:
         title += f' - {conjunto}'
     ax.set_title(title)
@@ -56,7 +59,7 @@ def matriz_confucion_regresion_multiclass_clasificacion(y_test, y_pred, conjunto
             character if character.isalnum() else "_"
             for character in conjunto.lower()
         )
-    return _guardar(fig, FIGURES_DIR / f"matriz_confusion_multinomial{suffix}.png")
+    return _guardar(fig, FIGURES_DIR / f"{nombre_base}{suffix}.png")
 
 # ---------------------------------------------------------------------------------------------
 # P3: gráficas de los grupos de estaciones (se registran como artefactos en MLflow)

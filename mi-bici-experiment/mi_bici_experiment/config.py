@@ -39,6 +39,48 @@ P1_COMBINACIONES = {
     "modelo_2":  {"n_estimators": 300, "learning_rate": 0.05, "num_leaves": 25, "min_child_samples": 50},
     "modelo_3": {"n_estimators": 400, "learning_rate": 0.05, "num_leaves": 31}}
 
+P2_COMBINACIONES = {
+    # Mayor regularización para limitar el sobreajuste.
+    "modelo_1": {
+        "n_estimators": 200,
+        "max_depth": 10,
+        "min_samples_split": 20,
+        "min_samples_leaf": 10,
+        "max_features": "sqrt",
+        "bootstrap": True,
+        "max_samples": 0.7,
+        "class_weight": "balanced_subsample",
+        "random_state": RANDOM_STATE,
+        "n_jobs": -1,
+    },
+    # Configuración actual de pipeline_rf como referencia.
+    "modelo_2": {
+        "n_estimators": 300,
+        "max_depth": 16,
+        "min_samples_split": 10,
+        "min_samples_leaf": 5,
+        "max_features": "sqrt",
+        "bootstrap": True,
+        "max_samples": 0.8,
+        "class_weight": "balanced_subsample",
+        "random_state": RANDOM_STATE,
+        "n_jobs": -1,
+    },
+    # Más capacidad para capturar relaciones entre estación, flujos y calendario.
+    "modelo_3": {
+        "n_estimators": 400,
+        "max_depth": 24,
+        "min_samples_split": 6,
+        "min_samples_leaf": 2,
+        "max_features": 0.5,
+        "bootstrap": True,
+        "max_samples": 0.9,
+        "class_weight": "balanced_subsample",
+        "random_state": RANDOM_STATE,
+        "n_jobs": -1,
+    },
+}
+
 
 ##  MLflow   ##
 MLFLOW_EXPERIMENT = "mibici-equipo12"
@@ -77,6 +119,7 @@ NOMENCLATURA_CSV = RAW_DATA_DIR / "nomenclatura_2026_09.csv"
 DESTINO_COL = "destino_id"
 FECHA_FIN_COL = "fin_del_viaje"
 P1_NOMBRE_REGISTRO = f"mibici-equipo{EQUIPO}-p1-demanda"
+P2_NOMBRE_REGISTRO = f"mibici-equipo{EQUIPO}-p2-riesgo"
 P2_FECHA_INICIO = "2025-10-01"
 P2_DATASET_PARQUET = PROCESSED_DATA_DIR / "p2_classification_dataset.parquet"
 

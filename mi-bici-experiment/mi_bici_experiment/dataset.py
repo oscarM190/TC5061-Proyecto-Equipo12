@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 import polars as pl
+import certifi
 
 from mi_bici_experiment.config import (
     INTERIM_DATA_DIR,
@@ -149,6 +150,8 @@ class DatasetManager:
         # Create the destination folder before starting the parallel downloads.
         RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
         ssl_context = ssl.create_default_context()
+        # Add Mozilla's CA bundle for Python installations without system CAs.
+        ssl_context.load_verify_locations(cafile=certifi.where())
 
         # Download each configured URL concurrently, returning paths in URL order.
         with ThreadPoolExecutor(max_workers=max_workers) as executor:

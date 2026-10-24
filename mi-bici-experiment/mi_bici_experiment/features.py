@@ -71,47 +71,56 @@ def agregar_variables(diario: pd.DataFrame, col_estacion: str) -> pd.DataFrame:
     columnas_historicas = ["trips_lag_1", "trips_lag_7", "trips_roll_mean_7"]
     return diario.dropna(subset=columnas_historicas).reset_index(drop=True)
 
-def clasificacion_variable_objetivo_y_caracterizticas():
-    print("TODO")
-
 def agregar_balance_neto_y_normalizado(df):
-    df['Fecha'] = df['Inicio_del_viaje'].dt.floor('d')
+    """Balance diario sobre el calendario operativo observado de cada estación.
 
-    salidas = df.groupby(['Fecha', 'Origen_Id']).size().reset_index(name='Salidas')
-    salidas.rename(columns={'Origen_Id': 'Estacion_Id'}, inplace=True)
-
-    llegadas = df.groupby(['Fecha', 'Destino_Id']).size().reset_index(name='Llegadas')
-    llegadas.rename(columns={'Destino_Id': 'Estacion_Id'}, inplace=True)
-
-    capacidad = df.groupby('Origen_Id')['dpcapacity'].max().reset_index()
-    capacidad.rename(columns={'Origen_Id': 'Estacion_Id'}, inplace=True)
-
-    # Unir Salidas y Llegadas
-    balance_diario = pd.merge(salidas, llegadas, on=['Fecha', 'Estacion_Id'], how='outer').fillna(0)
-
-    # Unir la capacidad de la estación
-    balance_diario = pd.merge(balance_diario, capacidad, on='Estacion_Id', how='left')
-
-    # Evitar división por cero si alguna estación tiene capacidad 0 o NaN
-    balance_diario['dpcapacity'] = balance_diario['dpcapacity'].replace(0, np.nan)
-
-    # Calcular el Balance Neto y el Balance Normalizado
+    Sin un catálogo de altas/bajas, se infiere el periodo entre el primer y último
+    movimiento (salida o llegada). Solo se completan con cero los días interiores.
+    """
+    salidas = (
+        df.assign(Fecha=df['Inicio_del_viaje'].dt.normalize())
+        .groupby(['Fecha', 'Origen_Id']).size().rename('Salidas')
+        .rename_axis(['Fecha', 'Estacion_Id'])
+    )
+    llegadas = (
+        df.assign(Fecha=df['Fin_del_viaje'].dt.normalize())
+        .groupby(['Fecha', 'Destino_Id']).size().rename('Llegadas')
+        .rename_axis(['Fecha', 'Estacion_Id'])
+    )
+    movimientos = pd.concat([salidas, llegadas], axis=1).fillna(0).reset_index()
+    capacidad = df.groupby('Origen_Id')['dpcapacity'].max()
+    diarios = []
+    for estacion_id, station in movimientos.groupby('Estacion_Id'):
+        calendario = pd.date_range(station['Fecha'].min(), station['Fecha'].max(), freq='D')
+        diario = station.set_index('Fecha')[['Salidas', 'Llegadas']].reindex(
+            calendario, fill_value=0
+        )
+        diario.index.name = 'Fecha'
+        diario['Estacion_Id'] = estacion_id
+        diario['dpcapacity'] = capacidad.get(estacion_id, np.nan)
+        diarios.append(diario.reset_index())
+    if not diarios:
+        raise ValueError("No hay movimientos para construir el calendario diario de P2.")
+    balance_diario = pd.concat(diarios, ignore_index=True)
+    balance_diario = balance_diario.loc[
+        np.isfinite(balance_diario['dpcapacity']) & balance_diario['dpcapacity'].gt(0)
+    ].copy()
     balance_diario['Balance_Neto'] = balance_diario['Llegadas'] - balance_diario['Salidas']
-    balance_diario['Balance_Normalizado'] = balance_diario['Balance_Neto'] / balance_diario['dpcapacity']
-
-    # Limpiar valores nulos resultantes de capacidades inválidas
-    balance_diario = balance_diario.dropna(subset=['Balance_Normalizado'])
+    balance_diario['Balance_Normalizado'] = (
+        balance_diario['Balance_Neto'] / balance_diario['dpcapacity']
+    )
     print_balance_normalizado(balance_diario)
     return balance_diario
 
 def clasificacion_variable_objetivo_y_caracterizticas(balance_diario):
-    balance_diario = balance_diario[(balance_diario['Balance_Normalizado'] >= -1.5) & 
-                                (balance_diario['Balance_Normalizado'] <= 1.5)].copy()
+    """Clasifica el balance sin recortar extremos y une el estado del día T+1 exacto."""
+    # Preserve extreme days and the complete calendar before computing history.
+    balance_diario = balance_diario.copy()
 
     #  Creación de la variable actual de estado (0: Sin bicis, 1: Balanceado, 2: Sin anclajes)
     condiciones = [
-        (balance_diario['Balance_Normalizado'] <= -0.70),
-        (balance_diario['Balance_Normalizado'] >= 0.70)
+        (balance_diario['Balance_Normalizado'] <= -0.45),
+        (balance_diario['Balance_Normalizado'] >= 0.45)
     ]
     opciones = [0, 2]
     balance_diario['Estado_Actual'] = np.select(condiciones, opciones, default=1)
@@ -125,22 +134,51 @@ def clasificacion_variable_objetivo_y_caracterizticas(balance_diario):
     # Ordenamos estrictamente por estación y fecha para evitar mezcla de series de tiempo
     balance_diario = balance_diario.sort_values(['Estacion_Id', 'Fecha'])
 
-    # Desplazamos el estado un día hacia atrás dentro de cada grupo de estación
-    # Esto alinea los features del "Hoy" con la clase de riesgo de "Mañana"
-    balance_diario['Riesgo_T1'] = balance_diario.groupby('Estacion_Id')['Estado_Actual'].shift(-1)
-
-    # El último día histórico de cada estación queda nulo, lo descartamos para el entrenamiento
-    dataset_ml = balance_diario.dropna(subset=['Riesgo_T1']).copy()
-    dataset_ml['Riesgo_T1'] = dataset_ml['Riesgo_T1'].astype(int)
+    # Match the label to the exact following calendar day, never the next available row.
+    balance_diario['Fecha_Objetivo'] = balance_diario['Fecha'] + pd.Timedelta(days=1)
+    balance_diario['Dia_Semana_Objetivo'] = balance_diario['Fecha_Objetivo'].dt.dayofweek
+    balance_diario['Es_Fin_Semana_Objetivo'] = (
+        balance_diario['Dia_Semana_Objetivo'] >= 5
+    ).astype(int)
+    balance_diario['Mes_Objetivo'] = balance_diario['Fecha_Objetivo'].dt.month
+    objetivos = balance_diario[['Estacion_Id', 'Fecha', 'Estado_Actual']].rename(
+        columns={'Fecha': 'Fecha_Objetivo', 'Estado_Actual': 'Riesgo_T1'}
+    )
+    dataset_ml = balance_diario.merge(
+        objetivos, on=['Estacion_Id', 'Fecha_Objetivo'], how='left', validate='one_to_one'
+    )
+    dataset_ml['Riesgo_T1'] = dataset_ml['Riesgo_T1'].astype('Int64')
+    # Keep rows without a future label until all lag and rolling features are computed.
     return dataset_ml
 
 
 def creacion_variables_memoria_historica(dataset_ml):
+    """Calcula historia en días consecutivos y luego elimina filas sin historia u objetivo."""
     # Asegurar de que el dataset esté perfectamente ordenado
-    dataset_ml = dataset_ml.sort_values(['Estacion_Id', 'Fecha'])
+    dataset_ml = dataset_ml.sort_values(['Estacion_Id', 'Fecha']).copy()
+    if dataset_ml.duplicated(['Estacion_Id', 'Fecha']).any():
+        raise ValueError('P2 requiere una fila por estación y día.')
+    diferencias = dataset_ml.groupby('Estacion_Id')['Fecha'].diff().dropna()
+    if diferencias.ne(pd.Timedelta(days=1)).any():
+        raise ValueError('Completa el calendario diario antes de calcular los rezagos de P2.')
 
-    # ¿Cómo se comportó el balance el mismo día de la semana pasada?
-    dataset_ml['Balance_Lag_7'] = dataset_ml.groupby('Estacion_Id')['Balance_Normalizado'].shift(7)
+    # Forecast at the close of T: today's flows and balance are already available.
+    if not (np.isfinite(dataset_ml['dpcapacity']) & dataset_ml['dpcapacity'].gt(0)).all():
+        raise ValueError('P2 requiere capacidad positiva y finita para normalizar los flujos.')
+    for columna in ('Llegadas', 'Salidas'):
+        dataset_ml[f'{columna}_Por_Capacidad'] = dataset_ml[columna] / dataset_ml['dpcapacity']
+
+    columnas_balance = []
+    for lag in (1, 2, 3, 7):
+        nombre = f'Balance_Lag_{lag}'
+        dataset_ml[nombre] = dataset_ml.groupby('Estacion_Id')['Balance_Normalizado'].shift(lag)
+        columnas_balance.append(nombre)
+    for ventana in (3, 7):
+        dataset_ml[f'Media_Movil_{ventana}d_Balance'] = dataset_ml.groupby(
+            'Estacion_Id'
+        )['Balance_Normalizado'].transform(
+            lambda x: x.rolling(window=ventana, min_periods=ventana).mean()
+        )
 
     # Volumen de llegadas y salidas en la misma estación en días anteriores.
     columnas_lag = []
@@ -149,6 +187,11 @@ def creacion_variables_memoria_historica(dataset_ml):
             nombre_lag = f'{columna}_Lag_{lag}'
             dataset_ml[nombre_lag] = dataset_ml.groupby('Estacion_Id')[columna].shift(lag)
             columnas_lag.append(nombre_lag)
+            nombre_normalizado = f'{columna}_Por_Capacidad_Lag_{lag}'
+            dataset_ml[nombre_normalizado] = dataset_ml.groupby('Estacion_Id')[
+                f'{columna}_Por_Capacidad'
+            ].shift(lag)
+            columnas_lag.append(nombre_normalizado)
 
     # Promedios móviles de 7 días para las llegadas y las salidas.
     dataset_ml['Media_Movil_7d_Llegadas'] = dataset_ml.groupby('Estacion_Id')['Llegadas'].transform(
@@ -158,10 +201,18 @@ def creacion_variables_memoria_historica(dataset_ml):
         lambda x: x.rolling(window=7, min_periods=1).mean()
     )
 
+    for columna in ('Llegadas', 'Salidas'):
+        dataset_ml[f'Media_Movil_7d_{columna}_Por_Capacidad'] = dataset_ml.groupby(
+            'Estacion_Id'
+        )[f'{columna}_Por_Capacidad'].transform(
+            lambda x: x.rolling(window=7, min_periods=7).mean()
+        )
+
     #  Limpieza post-ingeniería
     # Al hacer shift(7), los primeros 7 días de cada estación quedarán con nulos en Lag_7.
-    # Para entrenar modelos (como Random Forest o XGBoost), es mejor eliminar estos registros incompletos.
-    dataset_ml = dataset_ml.dropna(subset=['Balance_Lag_7', *columnas_lag]).copy()
+    # Discard unknown future labels only after computing history on the full calendar.
+    dataset_ml = dataset_ml.dropna(subset=[*columnas_balance, *columnas_lag, 'Riesgo_T1']).copy()
+    dataset_ml['Riesgo_T1'] = dataset_ml['Riesgo_T1'].astype(int)
 
     print(
         dataset_ml[

@@ -15,6 +15,7 @@ import mlflow
 
 from mi_bici_experiment.config import (
     MLFLOW_EXPERIMENT,
+    P2_COMBINACIONES,
     P3_INICIO_ENTRENAMIENTO,
     P3_K_CANDIDATOS,
     P3_N_INIT,
@@ -61,19 +62,50 @@ def _p3(accion: str, model: str, run_id: str, extra: list[str]) -> None:
 
 
 def _baseline_actual(question: str, extra: list[str]) -> None:
-    """P1 y P2 todavía no reciben hiperparámetros: se ejecuta su modelo actual."""
+    """Conserva la ejecución del baseline de P1."""
     if extra:
         logger.warning(f"{question}: se ignoran {extra}; el modelo aún no está parametrizado")
     if question == "p1":
         from mi_bici_experiment.modeling.modules.p1_regression.models import RegressionModel
 
         RegressionModel().ejecutar()
-    else:
-        from mi_bici_experiment.modeling.modules.p2_classification.models import (
-            ClassificationModel,
-        )
 
-        ClassificationModel.ejecutar()
+
+def _argumentos_p2(extra: list[str]) -> argparse.Namespace:
+    """Acepta los nombres de MLflow (-P n_estimators=...) y de la CLI de P2."""
+    p = argparse.ArgumentParser(prog="p2")
+    for name, value_type in (
+        ("n_estimators", int), ("max_depth", int), ("min_samples_split", int),
+        ("min_samples_leaf", int), ("max_features", str), ("max_samples", float),
+        ("class_weight", str), ("random_state", int), ("n_jobs", int),
+    ):
+        p.add_argument(f"--{name}", f"--{name.replace('_', '-')}", type=value_type, default=None)
+
+    def boolean(value):
+        if value.lower() in ("true", "1", "yes"):
+            return True
+        if value.lower() in ("false", "0", "no"):
+            return False
+        raise argparse.ArgumentTypeError("bootstrap debe ser true o false")
+
+    group = p.add_mutually_exclusive_group()
+    group.add_argument("--bootstrap", type=boolean, nargs="?", const=True, default=None)
+    group.add_argument("--no-bootstrap", dest="bootstrap", action="store_false", default=None)
+    return p.parse_args(extra)
+
+
+def _p2(accion: str, model: str, run_id: str, extra: list[str]) -> None:
+    from mi_bici_experiment.modeling.modules.p2_classification import models as p2
+
+    if model not in ("random_forest", "random-forest", "rf"):
+        raise SystemExit("p2: usa --model random_forest")
+    if accion not in ("train", "search"):
+        raise SystemExit("p2: usa train o search; la búsqueda registra al ganador con alias champion")
+    options = vars(_argumentos_p2(extra))
+    if accion == "train" and all(value is None for value in options.values()):
+        # Force a single training; remaining options inherit modelo_3 in the P2 CLI.
+        options["n_estimators"] = P2_COMBINACIONES["modelo_3"]["n_estimators"]
+    p2.main(**options)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -87,6 +119,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.question == "p3":
         _p3(args.accion, args.model, args.run_id, extra)
+    elif args.question == "p2":
+        _p2(args.accion, args.model, args.run_id, extra)
     elif args.accion == "train":
         _baseline_actual(args.question, extra)
     else:

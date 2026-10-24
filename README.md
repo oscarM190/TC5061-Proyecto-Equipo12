@@ -23,11 +23,9 @@ registrados en MLflow.
 - **Fuente:** [portal de datos abiertos de MiBici](https://www.mibici.net/es/datos-abiertos/). Viajes por
   mes (`datos_abiertos_AAAA_MM.csv`) y nomenclatura de estaciones (`nomenclatura_2026_09.csv`). Las URL
   exactas están en `MI_BICI_CSVS` de `mi_bici_experiment/config.py`.
-- **Rango:** octubre de 2025 a septiembre de 2026 (12 meses; septiembre de 2026 es el último mes
-  publicado). Cubre un año completo de estacionalidad.
-- **Tamaño:** 4,497,877 viajes crudos en 12 archivos. La limpieza de P3 (sin duraciones no positivas o
-  mayores a 6 h ni devoluciones en la misma estación en menos de 60 s) deja 4,354,979. La nomenclatura
-  tiene 484 estaciones (14 retiradas).
+- **Rango:** octubre de 2024 a septiembre de 2026 (24 meses; septiembre de 2026 es el último mes
+  publicado). Cubre dos años completos de estacionalidad.
+- **Tamaño:** 9,041,965  viajes crudos en 24 archivos, y un archivo de nomenclatura que contiene 484 estaciones.
 - **Variables usadas:** `Inicio_del_viaje`, `Fin_del_viaje`, `Origen_Id`, `Destino_Id` de los viajes, y
   `id`, `name`, `latitude`, `longitude`, `dpcapacity` de la nomenclatura.
 - **Condiciones de uso:** el portal publica los datos para explorarlos y reutilizarlos, sin una licencia
@@ -35,16 +33,7 @@ registrados en MLflow.
   excluida de Git.
 - **Datos personales:** los viajes incluyen `Usuario_Id`, `Genero` y `Año_de_nacimiento`. Ningún modelo
   los usa: `features.parquet` solo conserva las columnas de la lista anterior, y no se registran en MLflow.
-  `data/raw/trips.parquet` todavía los conserva (no se versiona); eliminarlos en la ingesta está pendiente.
-- **Partición temporal** (sin mezclar fechas):
-
-| Pregunta | Entrenamiento | Evaluación |
-|----------|---------------|------------|
-| P1 | Primer 80% de las fechas | Último 20% de las fechas |
-| P3 | 2025-07 a 2026-06 (validación: ajuste hasta 2026-03 y estabilidad en 2026-04 a 2026-06) | 2026-07 a 2026-09, solo para medir la estabilidad de los grupos |
-
-Las variables de P1 usan `shift` por estación y las de P3 se calculan solo con el periodo de
-entrenamiento, así que ninguna usa información posterior al momento de la predicción.
+- **Partición temporal** 70% para entrenamiento, 15% para validación y 15% para pruebas.
 
 ## Estructura
 
@@ -53,28 +42,43 @@ dentro de `mi-bici-experiment/`:
 
 ```
 ├── .github/workflows/mlflow.yml   <- Pipeline de GitHub Actions
+├── MLproject                      <- Configuración del MLflow Project
+├── python_env.yaml                <- Entorno de MLflow (Python y dependencias)
 ├── README.md                      <- Este documento
 └── mi-bici-experiment
     ├── Makefile                   <- Comandos de conveniencia (make requirements, make test)
     ├── pyproject.toml             <- Metadatos del paquete; Python 3.14.7
     ├── requirements.txt           <- Dependencias con versión fija
     ├── setup.cfg                  <- Configuración de flake8
-    ├── data                       <- Datos de MiBici (no se versionan)
-    │   ├── raw                    <- CSV originales, trips.parquet y nomenclatura.parquet
-    │   └── interim                <- features.parquet, entrada de los modelos
+    ├── data                       <- Datos de MiBici
+    │   ├── raw                    <- CSVs originales de viajes y nomenclatura
+    │   ├── interim                <- Datos unificados de viajes y nomenclatura
+    │   └── processed              <- Datos procesados para entrenar modelos
     ├── docs                       <- Documentación mkdocs de la plantilla
-    ├── models                     <- Modelos serializados (no se versionan; se registran en MLflow)
-    ├── notebooks                  <- Exploración, con nombre 1.0-iniciales-descripcion.ipynb
+    ├── models                     <- Modelos serializados
+    ├── notebooks                  <- Notebooks de Jupyter
+    │   └── images                 <- Imágenes usadas en los notebooks
     ├── references                 <- ML Canvas y diagrama de arquitectura
-    ├── reports/figures            <- Figuras generadas
+    ├── reports/figures            <- Figuras generadas por los modelos
     ├── tests                      <- Pruebas con pytest
     └── mi_bici_experiment         <- Código del proyecto
-        ├── config.py              <- Rutas, fechas, semilla, columnas y parámetros (único lugar)
+        ├── config.py              <- Rutas, fechas, semilla, columnas y parámetros
         ├── dataset.py             <- Descarga de CSV y conversión a Parquet
-        ├── features.py            <- Variables de P1 y P3
+        ├── features.py            <- Variables de los modelos
         ├── plots.py               <- Gráficas que se registran como artefactos
+        ├── tracking.py            <- Registro de experimentos y artefactos en MLflow
         └── modeling
-            └── train.py           <- Entrenamiento y registro en MLflow (P1 y P3)
+            ├── predict.py         <- Predicciones con modelos registrados
+            ├── run.py             <- Ejecución de los flujos de modelado
+            ├── train.py           <- Entrenamiento de modelos
+            └── modules             <- Implementaciones de modelos para P1, P2 y P3
+                ├── p1_regression
+                │   └── models.py
+                ├── p2_classification
+                │   └── models.py
+                └── p3_clustering
+                    ├── estimadores.py
+                    └── models.py
 ```
 
 ## Instalación
@@ -90,42 +94,9 @@ pip install -r requirements.txt
 pip install -e .                   # el paquete, para importarlo desde notebooks/ (o: make requirements)
 ```
 
-Todos los comandos siguientes se ejecutan desde `mi-bici-experiment/`, salvo los de `mlflow run`, que
-se ejecutan desde la raíz del repositorio.
+Todos los comandos siguientes se ejecutan desde la raíz del repositorio.
 
-## Ingesta de datos
-
-```bash
-python -m mi_bici_experiment.dataset     # descarga los CSV y genera data/raw/*.parquet
-python -m mi_bici_experiment.features    # genera data/interim/features.parquet
-```
-
-La descarga omite los archivos que ya existen, reintenta hasta tres veces y deja intactos los CSV en
-`data/raw/`.
-
-## Experimento base
-
-```bash
-python -m mi_bici_experiment.modeling.train todos  # Correr todos los experimentos
-python -m mi_bici_experiment.modeling.train regresion-p1    # P1
-python -m mi_bici_experiment.modeling.train clustering-p3   # P3
-python -m pytest tests                                      # pruebas
-mlflow ui --backend-store-uri sqlite:///mlflow.db           # http://127.0.0.1:5000
-```
-
-Todos los runs se registran en el experimento `mibici-equipo12`:
-
-| Pregunta | Run | Modelo | Métricas |
-|----------|-----|--------|----------|
-| P1 | `P1-regresion-lineal-baseline` | Regresión lineal con rezagos y calendario | `test_mae`, `test_rmse` |
-| P2 | `regresion-lineal-multinomial-clasificacion` | Regresión logística multinomial con escalado (#5) | precisión, recall y F1 macro en validación y prueba |
-| P3 | `P3-kmeans-baseline-k4` | K-means, k = 4, perfil horario de salidas | `train_silhouette_espacio_comun`, `train_davies_bouldin_espacio_comun`, `test_ari_estabilidad` |
-| P3 | `P3-pca-kmeans-candidato` | Estandarización + PCA + k-means, k por silueta | igual |
-
-En P3, `train_silhouette` y `train_davies_bouldin` se miden en el espacio de cada modelo y no se
-comparan entre runs; las versiones `_espacio_comun` usan el perfil completo estandarizado.
-
-## MLflow Project (actividad 5)
+## MLflow Project
 
 El repositorio es un MLflow Project: [`MLproject`](MLproject) declara el entorno
 ([`python_env.yaml`](python_env.yaml), con las mismas versiones fijas de `requirements.txt`) y los puntos
@@ -139,8 +110,6 @@ El Model Registry necesita un almacenamiento con base de datos. En una terminal 
 mlflow server --backend-store-uri sqlite:///mlflow.db --port 5000
 export MLFLOW_TRACKING_URI=http://127.0.0.1:5000      # Windows: set MLFLOW_TRACKING_URI=...
 ```
-
-`mlflow.db` y `mlartifacts/` están en `.gitignore`.
 
 ### Puntos de entrada
 
@@ -158,102 +127,114 @@ semilla y las fechas) se toma de `mi_bici_experiment/config.py`.
 `--env-manager uv` crea el entorno de `python_env.yaml` con [uv](https://docs.astral.sh/uv/); sin esa
 opción, MLflow usa pyenv para instalar Python 3.14.7. `--env-manager local` usa el entorno activo.
 
-### Reproducir P3 desde un clon limpio
+### Ingesta de datos
+
+Descarga los CSV faltantes de MiBici, genera el Parquet de viajes en `data/interim/` y actualiza
+`data_manifest.json` con el conteo de registros y las huellas SHA-256 de los archivos.
 
 ```bash
 mlflow run . -e ingest --run-name ingest --env-manager uv
+```
+
+### Comandos para reproducir P1
+```bash
+# Baseline (regresión lineal)
+mlflow run . -e train -P question=p1 -P model=linear --env-manager uv
+
+# Búsqueda de hiperparámetros de LightGBM: 3 combinaciones de config.py (nested runs; elige el mejor modelo evaluando val_mae) y registra el mejor modelo como champion en el Model Registry
+mlflow run . -e search -P question=p1 -P model=lgbm --env-manager uv
+
+# Hiperparámetros a elección: solo cambian los que se indiquen, el resto toma los valores de modelo_3 de config.py
+mlflow run . -e train -P question=p1 -P model=lgbm -P n_estimators=300 -P learning_rate=0.03 --env-manager uv
+
+# Reproducir el mejor modelo (modelo_3 de config.py)
+mlflow run . -e train -P question=p1 -P model=lgbm -P n_estimators=400 -P learning_rate=0.05 -P num_leaves=31 --env-manager 
+```
+
+### Comandos para reproducir P2
+```bash
+# Baseline (regresión logística)
+mlflow run . -e train -P question=p2 -P model=logistic_regression --env-manager uv
+
+# Búsqueda de hiperparámetros de Random forest: 3 combinaciones de config.py (nested runs; elige el mejor modelo evaluando f1-score) y registra el mejor modelo como champion en el Model Registry
+mlflow run . -e search -P question=p2 -P model=random_forest --env-manager uv
+
+# Hiperparámetros a elección: solo cambian los que se indiquen, el resto toma los valores de modelo_3 de config.py
+mlflow run . -e train -P question=p2 -P model=random_forest -P max_depth =16 -P min_samples_leaf=5 --env-manager uv
+
+# Reproducir el mejor modelo (modelo_3 de config.py)
+mlflow run . -e train -P question=p2 -P model=random_forest -P max_depth=24 -P max_features=0.05 -P num_leaves=31 --env-manager uv
+```
+
+### Comandos para reproducir P3
+
+```bash
 # Baseline de la entrega anterior
 mlflow run . -e train -P question=p3 -P model=kmeans -P k=4 -P stage=baseline --env-manager uv
+
 # Búsqueda k = 3..8, PCA 0 o 2 (nested runs; elige por ARI de validación)
 mlflow run . -e search -P question=p3 -P model=kmeans --env-manager uv
+
 # Candidatas
 mlflow run . -e train -P question=p3 -P model=kmeans -P k=3 -P pca=2 --env-manager uv
 mlflow run . -e train -P question=p3 -P model=gmm -P k=4 -P cov=spherical --env-manager uv
 mlflow run . -e train -P question=p3 -P model=aglomerativo -P k=3 -P linkage=ward --env-manager uv
+
 # Model Registry: el modelo elegido como champion y el baseline como challenger
 mlflow run . -e register -P question=p3 -P run_id=<run_id de p3-kmeans-k3-pca2> -P alias=champion --env-manager uv
 mlflow run . -e register -P question=p3 -P run_id=<run_id de p3-kmeans-k4> -P alias=challenger --env-manager uv
 ```
 
-P1 y P2 se ejecutan con `-P question=p1 -P model=baseline` (o `p2`) mientras se parametrizan sus modelos.
-
-Cada corrida de P3 lleva las etiquetas `equipo`, `question`, `model_family`, `stage_of_work`
-(`baseline`, `search`, `candidate`), `git_commit`, `git_branch` y `git_dirty`, y estos artefactos:
-
-| Carpeta | Contenido |
-|---------|-----------|
-| modelo (`model`) | Pipeline de scikit-learn con firma e `input_example` (pestaña *Models* de la corrida) |
-| `data/` | `data_manifest.json`; además, el perfil de entrenamiento con `mlflow.log_input` |
-| `config/` | `MLproject`, `python_env.yaml` y `params.json` con los parámetros resueltos |
-| `plots/` | Mapa de los grupos y perfil de uso por grupo (la búsqueda agrega la silueta por k) |
-| `tables/` | Estaciones por grupo y resumen por grupo (datos públicos de estaciones, sin datos de usuarios) |
-
-`data_version` se calcula con los SHA-256 de los CSV fuente del manifiesto: el binario del Parquet cambia
-entre corridas de la ingesta aunque los datos sean los mismos.
-
-### Resultados de P3
-
-Entrenamiento 2025-07 a 2026-06 (377 estaciones con al menos 300 salidas). Validación: ARI entre los
-grupos ajustados hasta 2026-03 y los asignados con el perfil de 2026-04 a 2026-06. Prueba: lo mismo con
-el modelo de entrenamiento y el perfil de 2026-07 a 2026-09. La silueta y Davies-Bouldin se miden en el
-espacio común (las tres variables estandarizadas), comparable entre todos los modelos.
-
-| Corrida | Modelo | Silueta | Davies-Bouldin | Grupo mínimo | ARI val | ARI test | Test vs baseline |
-|---------|--------|---------|----------------|--------------|---------|----------|------------------|
-| `p3-kmeans-k4` (baseline) | K-means, k = 4 | **0.346** | **1.003** | 21 | 0.831 | 0.706 | |
-| `p3-kmeans-k3-pca2` (champion) | Escalado + PCA(2) + K-means, k = 3 | 0.329 | 1.057 | **32** | **0.833** | **0.769** | **+0.063** |
-| `p3-gmm-k4` | GMM, k = 4, covarianza esférica | 0.338 | 1.091 | 27 | 0.802 | 0.664 | −0.042 |
-| `p3-aglomerativo-k3` | Aglomerativo ward, k = 3 | 0.296 | 1.025 | 16 | 0.711 | 0.650 | −0.056 |
-
-El modelo elegido empata con el baseline en validación y lo supera en la prueba de estabilidad (0.769
-frente a 0.706), con un grupo mínimo mayor; la silueta baja 0.017 porque PCA une el grupo de estaciones
-receptoras con el núcleo de alta demanda. Por eso el baseline queda como `challenger`. Grupos del
-champion: periferia de baja demanda (121 estaciones, 10 viajes/día, tienden a vaciarse), núcleo de alta
-demanda (224, 34 viajes/día, 91 % en Guadalajara) y uso recreativo (32, 33 % de las salidas en fin de
-semana).
-
 ### Model Registry: aliases
 
-P3 se registra como `mibici-equipo12-p3-grupos` (P1 y P2 seguirán `mibici-equipo12-p1-demanda` y
-`mibici-equipo12-p2-riesgo`). Se usan **aliases** en lugar de etapas porque las etapas
-(`Staging`/`Production`) están obsoletas desde MLflow 2.9 y un alias apunta a una versión concreta que se
-puede mover sin volver a registrar el modelo: `champion` es la versión en producción y `challenger`, la
-siguiente mejor. Cada versión guarda su linaje en etiquetas (`experimento`, `run_origen`, `git_commit`,
-`data_version`) y en su descripción las métricas con que se eligió. El modelo en producción se carga con:
+En Model Registry P3 se registra como `mibici-equipo12-p3-grupos` (P1 y P2 seguirán `mibici-equipo12-p1-demanda` y
+`mibici-equipo12-p2-riesgo`).
 
+Se utilizó el esquema de aliases de MLflow porque permite gestionar las versiones de los modelos de manera más flexible y eficiente, además de reemplazar el esquema tradicional de etapas (Staging y Production), obsoleto desde MLflow 2.9. Los aliases permiten asignar nombres a versiones específicas y actualizarlos sin necesidad de volver a registrar el modelo, facilitando su promoción y reemplazo. En este esquema, champion identifica la versión utilizada en producción, mientras que challenger representa una versión candidata para sustituirla. Además, cada versión conserva su trazabilidad mediante etiquetas que registran el experimento, la ejecución de origen, el commit de Git y la versión de los datos, junto con las métricas utilizadas para su selección. Esto facilita el versionado, la reproducibilidad y el despliegue controlado de modelos dentro del flujo de MLOps.
+
+#### Código muestra para ejecutar el modelo champion de P1
+```python
+import mlflow
+from mi_bici_experiment.modeling.modules.p1_regression.models import RegressionLGBM
+
+datos = RegressionLGBM()
+datos.preparar_datos()
+
+modelo = mlflow.pyfunc.load_model("models:/mibici-equipo12-p1-demanda@champion")
+viajes = modelo.predict(datos.prueba[datos.todas_var])
+```
+
+#### Código muestra para ejecutar el modelo champion de P2
+```python
+import mlflow
+import pandas as pd
+from mi_bici_experiment.config import P2_DATASET_PARQUET
+from mi_bici_experiment.modeling.modules.p2_classification.models import ClassificationModel
+
+dataset_ml = pd.read_parquet(P2_DATASET_PARQUET)
+datos = ClassificationModel(dataset_ml)
+_, _, prueba = datos.separar_datos()
+
+modelo = mlflow.pyfunc.load_model(
+    "models:/mibici-equipo12-p2-riesgo@champion"
+)
+X = prueba[datos.features].astype("float64")
+predicciones = modelo.predict(X)
+
+# Map class IDs to their meanings, if desired
+estados = pd.Series(predicciones, index=prueba.index).map({
+    0: "Sin bicicletas",
+    1: "Balanceado",
+    2: "Sin anclajes",
+})
+```
+
+#### Código muestra para ejecutar el modelo champion de P3
 ```python
 import mlflow
 modelo = mlflow.pyfunc.load_model("models:/mibici-equipo12-p3-grupos@champion")
 grupos = modelo.predict(perfil[["prop_fin_semana", "log_viajes_dia", "balance"]])
 ```
-
-## Estado del proyecto
-
-| Componente | Estado | Pull Request |
-|------------|--------|--------------|
-| Estructura ccds | Integrado | `main` |
-| Ingesta y Parquet | Integrado | #1 (`task/populate_data_scripts`) |
-| P1 baseline | Integrado | #2 (`p1-regresion-modelo`) |
-| P3 baseline y candidato | En revisión; sin conflictos con `main` | #3 (`feat/p3-clustering`) |
-| P2 baseline | En revisión | #5 (`task/clasification-model`) |
-| Script que entrena todos los modelos | En revisión; llega con #5 y P3 se agrega al integrar #3 | #5 |
-| Versionado de datos | Huella SHA-256 de los CSV crudos en `data_version` (`tracking.py`, #3); manifiesto con conteo de registros pendiente | #3 |
-| Pipeline de GitHub Actions | Pendiente; `mlflow.yml` no termina (`runs-on` y ruta de `requirements.txt`) | |
-| Pruebas | `python -m pytest tests` pasa (7 pruebas) con #3 | #3 |
-
-## Buenas prácticas aplicadas
-
-| Práctica | Cómo se aplica |
-|----------|----------------|
-| Un experimento y runs con nombre descriptivo | Experimento `mibici-equipo12`; runs `P<n>-<modelo>` |
-| Registrar lo necesario para reproducir | Fechas, partición, semilla (`RANDOM_STATE`), modelo e hiperparámetros como parámetros de cada run |
-| Ligar el run con el código y la pregunta | Etiquetas `equipo`, `pregunta`, `tipo_modelo`, `git_commit`, `git_branch` y `git_dirty` (P3; pendiente en P1) |
-| Métricas con el conjunto en el nombre | `test_mae`, `train_silhouette`, `test_ari_estabilidad`, etc. |
-| Sin credenciales ni datos personales | Las columnas de usuario no llegan a `features.parquet`; `.env` se excluye de Git |
-| Notebooks solo para exploración | `notebooks/1.0-<iniciales>-<descripcion>.ipynb`; la lógica vive en `mi_bici_experiment/` |
-| Configuración en un solo lugar | Rutas, fechas, semilla y columnas en `config.py` |
-| Dependencias fijas | `requirements.txt` con versiones fijas y Python 3.14.7 |
-| Nada de datos, modelos ni MLflow en Git | `.gitignore` excluye `data/`, `mlruns/`, `mlartifacts/` y `mlflow.db` y modelos serializados (`*.pkl`, `*.joblib`, `*.skops`, `*.onnx`), estos dos últimos desde #3 |
 
 ## Flujo de trabajo con Git
 
@@ -280,8 +261,8 @@ descripción indica qué cambia, cómo se probó y de qué otro PR depende.
 |------------|--------|-----|
 | Oscar Eduardo Morales Portuondo | [@oscarM190](https://github.com/oscarM190) | Estructura ccds, ingesta de datos (`dataset.py`) y P2 (clasificación) |
 | Julián Hazael Martínez Hernández | [@julianhmh01](https://github.com/julianhmh01) | P1 (regresión) |
-| Eduardo Sebastián Vela Alanís | [@eduardoVela2022](https://github.com/eduardoVela2022) | EDA (`notebooks/eda_mibici_trips.ipynb`), ML Canvas, revisión de Pull Requests e integración a `main` |
-| Jordan Piero Borda Colque | [@neronapier](https://github.com/neronapier) | P3 (clustering), MLflow Project de P3 y documentación (README) |
+| Eduardo Sebastián Vela Alanís | [@eduardoVela2022](https://github.com/eduardoVela2022) | EDA, ML Canvas y P2 (clasificación)  |
+| Jordan Piero Borda Colque | [@neronapier](https://github.com/neronapier) | P3 (agrupación) y documentación
 
 ## Referencias
 

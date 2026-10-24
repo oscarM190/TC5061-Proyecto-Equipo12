@@ -75,6 +75,13 @@ sus parámetros, métricas y artefactos. El mejor candidato se elige por F1 macr
 sin usar prueba para seleccionar. Su identificador queda en `best_run_id` del padre y el
 resumen de candidatos en `busqueda/resultados.json`.
 
+Al terminar la búsqueda, el pipeline del Random Forest ganador se registra como
+`mibici-equipo12-p2-riesgo` (`P2_NOMBRE_REGISTRO` en `config.py`) y recibe el alias
+`champion`. La versión conserva el run de origen, la combinación, el F1 de validación,
+la versión de datos y los metadatos Git del entrenamiento ganador. Los candidatos
+permanecen como artefactos en sus runs; solo el ganador de la búsqueda se registra bajo
+este nombre. Su URI es `models:/mibici-equipo12-p2-riesgo@champion`.
+
 ## P3: grupos de estaciones con patrones de uso similares
 
 Pregunta: ¿qué grupos de estaciones comparten patrones de uso y dónde se ubican en la ciudad?

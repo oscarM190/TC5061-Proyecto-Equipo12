@@ -25,6 +25,7 @@ from mi_bici_experiment.config import (
     P2_COMBINACIONES,
     P2_DATASET_PARQUET,
     P2_FECHA_INICIO,
+    P2_NOMBRE_REGISTRO,
     RANDOM_STATE,
     TRIPS_PARQUET,
 )
@@ -293,10 +294,10 @@ class ClassificationModel:
             )
             # Log floating-point inputs so nullable integer features remain schema-compatible.
             input_example = X_train.head(5).astype("float64")
-            mlflow.sklearn.log_model(
+            model_info = mlflow.sklearn.log_model(
                 pipeline,
                 name=tipo,
-                registered_model_name=tipo,
+                registered_model_name=tipo if not nested else None,
                 signature=infer_signature(input_example, pipeline.predict(input_example)),
                 input_example=input_example,
                 # These trees were fitted here; explicitly trust only their storage type.
@@ -304,7 +305,44 @@ class ClassificationModel:
                    if isinstance(pipeline.named_steps["clasificador"], RandomForestClassifier)
                    else {}),
             )
+            self.last_model_uri = model_info.model_uri
         return pipeline
+
+    def registrar_mejor_modelo(self, mejor):
+        """Registra el artefacto ganador y asigna champion con el linaje de su run."""
+        client = mlflow.MlflowClient()
+        winner_run = client.get_run(mejor["run_id"])
+        version = mlflow.register_model(
+            model_uri=mejor["model_uri"], name=P2_NOMBRE_REGISTRO
+        )
+        client.update_registered_model(
+            P2_NOMBRE_REGISTRO,
+            description="P2: riesgo de desequilibrio diario por estación mediante Random Forest.",
+        )
+        client.update_model_version(
+            P2_NOMBRE_REGISTRO, version.version,
+            description=(
+                f"Mejor candidato por F1 macro de validación: {mejor['val_f1_score']:.6f}; "
+                f"combinación {mejor['combinacion']}; run {mejor['run_id']}."
+            ),
+        )
+        tags = {
+            key: value for key, value in winner_run.data.tags.items()
+            if key in ("equipo", "pregunta", "git_commit", "git_branch", "git_dirty", "entorno")
+        }
+        tags.update({
+            "data_version": winner_run.data.params["version_datos"],
+            "source_run_id": mejor["run_id"],
+            "combinacion": mejor["combinacion"],
+            "criterio": "val_f1-score",
+            "val_f1_score": str(mejor["val_f1_score"]),
+        })
+        for key, value in tags.items():
+            client.set_model_version_tag(P2_NOMBRE_REGISTRO, version.version, key, value)
+        client.set_registered_model_alias(P2_NOMBRE_REGISTRO, "champion", version.version)
+        self.mejor_version = version.version
+        print(f"{P2_NOMBRE_REGISTRO} v{version.version} registrado con alias champion")
+        return version
 
     def buscar_hiperparametros(self, combinaciones=None):
         """Compara configuraciones en runs hijos y selecciona por F1 macro de validación."""
@@ -320,6 +358,7 @@ class ClassificationModel:
                 self.entrenar_random_forest(params, nombre=nombre, nested=True)
                 resultados.append({
                     "combinacion": nombre, "run_id": self.last_run_id,
+                    "model_uri": self.last_model_uri,
                     "val_f1_score": self.metricas["val_f1-score"],
                     "parametros": self.pipeline_rf.named_steps["clasificador"].get_params(),
                 })
@@ -328,6 +367,12 @@ class ClassificationModel:
             mlflow.log_metric("best_val_f1_score", mejor["val_f1_score"])
             mlflow.set_tag("best_run_id", mejor["run_id"])
             mlflow.log_dict(resultados, "busqueda/resultados.json")
+            version = self.registrar_mejor_modelo(mejor)
+            mlflow.log_params({
+                "modelo_registrado": P2_NOMBRE_REGISTRO,
+                "version_registrada": version.version,
+                "alias_modelo": "champion",
+            })
         self.resultados_busqueda = resultados
         self.mejor_resultado = mejor
         return mejor

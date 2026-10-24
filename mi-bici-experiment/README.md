@@ -82,6 +82,26 @@ la versión de datos y los metadatos Git del entrenamiento ganador. Los candidat
 permanecen como artefactos en sus runs; solo el ganador de la búsqueda se registra bajo
 este nombre. Su URI es `models:/mibici-equipo12-p2-riesgo@champion`.
 
+### P2 con MLflow Projects
+
+Desde la raíz del repositorio, con el entorno del proyecto activado:
+
+```bash
+# Una combinación; completa los valores omitidos desde modelo_3.
+mlflow run . -e train --env-manager local \
+  -P question=p2 -P model=random_forest \
+  -P n_estimators=300 -P max_depth=16 -P min_samples_leaf=5
+
+# Baseline y búsqueda en P2_COMBINACIONES; registra el ganador como champion.
+mlflow run . -e search --env-manager local \
+  -P question=p2 -P model=random_forest
+```
+
+`train` sin hiperparámetros entrena únicamente `modelo_3`. `search` sin hiperparámetros
+recorre las combinaciones; si recibe alguno, ejecuta solo la combinación personalizada,
+igual que la CLI directa de P2. Los nombres de parámetros usan guiones bajos, por ejemplo
+`-P max_features=0.5`, `-P random_state=42` o `-P bootstrap=false`.
+
 ## P3: grupos de estaciones con patrones de uso similares
 
 Pregunta: ¿qué grupos de estaciones comparten patrones de uso y dónde se ubican en la ciudad?

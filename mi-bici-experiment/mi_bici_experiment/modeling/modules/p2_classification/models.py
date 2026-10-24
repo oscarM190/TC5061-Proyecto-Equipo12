@@ -15,7 +15,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler
 
 from mi_bici_experiment.config import (
     EQUIPO,
@@ -78,7 +78,8 @@ class ClassificationModel:
         ]
         self.numeric_features += [
             f"{flow}_Por_Capacidad_Lag_{lag}"
-            for flow in ("Llegadas", "Salidas") for lag in (1, 2, 3, 7)
+            for flow in ("Llegadas", "Salidas")
+            for lag in (1, 2, 3, 7)
         ]
         self.categorical_features = ["Estacion_Id"]
         self.features = self.numeric_features + self.categorical_features
@@ -87,9 +88,14 @@ class ClassificationModel:
         # El pipeline garantiza que la estandarización se ajuste solo con los datos de entrenamiento
         self.pipeline_lr = Pipeline(
             [
-                ("preprocesamiento", ColumnTransformer([
-                    ("numericas", StandardScaler(), self.numeric_features),
-                ])),
+                (
+                    "preprocesamiento",
+                    ColumnTransformer(
+                        [
+                            ("numericas", StandardScaler(), self.numeric_features),
+                        ]
+                    ),
+                ),
                 (
                     "clasificador",
                     LogisticRegression(
@@ -102,21 +108,26 @@ class ClassificationModel:
         )
 
         # Clone preprocessing so training either model cannot change the other's state.
-        self.pipeline_rf = Pipeline([
-            ("preprocesamiento", clone(self.pipeline_lr.named_steps["preprocesamiento"])),
-            ("clasificador", RandomForestClassifier(
-                n_estimators=300,
-                max_depth=16,
-                min_samples_split=10,
-                min_samples_leaf=5,
-                max_features="sqrt",
-                bootstrap=True,
-                max_samples=0.8,
-                class_weight="balanced_subsample",
-                random_state=RANDOM_STATE,
-                n_jobs=-1,
-            )),
-        ])
+        self.pipeline_rf = Pipeline(
+            [
+                ("preprocesamiento", clone(self.pipeline_lr.named_steps["preprocesamiento"])),
+                (
+                    "clasificador",
+                    RandomForestClassifier(
+                        n_estimators=300,
+                        max_depth=16,
+                        min_samples_split=10,
+                        min_samples_leaf=5,
+                        max_features="sqrt",
+                        bootstrap=True,
+                        max_samples=0.8,
+                        class_weight="balanced_subsample",
+                        random_state=RANDOM_STATE,
+                        n_jobs=-1,
+                    ),
+                ),
+            ]
+        )
         self.rf_default_params = self.pipeline_rf.named_steps["clasificador"].get_params()
 
     def separar_datos(self):
@@ -135,7 +146,9 @@ class ClassificationModel:
         corte_val = int(len(fechas) * 0.70)
         corte_test = int(len(fechas) * 0.85)
         if not 0 < corte_val < corte_test < len(fechas):
-            raise ValueError("No hay suficientes fechas únicas para separar train/validación/test.")
+            raise ValueError(
+                "No hay suficientes fechas únicas para separar train/validación/test."
+            )
         inicio_val, inicio_test = fechas[corte_val], fechas[corte_test]
         train_mask = dataset["Fecha"] < inicio_val
         val_mask = (dataset["Fecha"] >= inicio_val) & (dataset["Fecha"] < inicio_test)
@@ -145,7 +158,9 @@ class ClassificationModel:
         val = dataset.loc[val_mask & ~purge_val].copy()
         test = dataset.loc[dataset["Fecha"] >= inicio_test].copy()
         if any(part.empty for part in (train, val, test)):
-            raise ValueError("Algún conjunto quedó vacío después de excluir objetivos entre periodos.")
+            raise ValueError(
+                "Algún conjunto quedó vacío después de excluir objetivos entre periodos."
+            )
         self.split_params = {
             "particion_unidad": "fechas_unicas",
             "inicio_validacion": str(inicio_val.date()),
@@ -187,7 +202,9 @@ class ClassificationModel:
             nested=nested,
         )
 
-    def _entrenar_pipeline(self, pipeline, tipo, nombre_modelo, nombre_figura, run_name=None, nested=False):
+    def _entrenar_pipeline(
+        self, pipeline, tipo, nombre_modelo, nombre_figura, run_name=None, nested=False
+    ):
         """Entrena y registra un pipeline con la evaluación común de P2."""
         train, val, test = self.separar_datos()
         X_train, y_train = train[self.features], train["Riesgo_T1"]
@@ -220,11 +237,13 @@ class ClassificationModel:
             params = {
                 key: value
                 for key, value in pipeline.get_params(deep=True).items()
-                if key.startswith((
-                    "preprocesamiento__numericas__",
-                    "preprocesamiento__estacion__",
-                    "clasificador__",
-                ))
+                if key.startswith(
+                    (
+                        "preprocesamiento__numericas__",
+                        "preprocesamiento__estacion__",
+                        "clasificador__",
+                    )
+                )
             }
             params.update(
                 {
@@ -301,9 +320,11 @@ class ClassificationModel:
                 signature=infer_signature(input_example, pipeline.predict(input_example)),
                 input_example=input_example,
                 # These trees were fitted here; explicitly trust only their storage type.
-                **({"skops_trusted_types": ["sklearn.tree._tree.Tree"]}
-                   if isinstance(pipeline.named_steps["clasificador"], RandomForestClassifier)
-                   else {}),
+                **(
+                    {"skops_trusted_types": ["sklearn.tree._tree.Tree"]}
+                    if isinstance(pipeline.named_steps["clasificador"], RandomForestClassifier)
+                    else {}
+                ),
             )
             self.last_model_uri = model_info.model_uri
         return pipeline
@@ -312,31 +333,33 @@ class ClassificationModel:
         """Registra el artefacto ganador y asigna champion con el linaje de su run."""
         client = mlflow.MlflowClient()
         winner_run = client.get_run(mejor["run_id"])
-        version = mlflow.register_model(
-            model_uri=mejor["model_uri"], name=P2_NOMBRE_REGISTRO
-        )
+        version = mlflow.register_model(model_uri=mejor["model_uri"], name=P2_NOMBRE_REGISTRO)
         client.update_registered_model(
             P2_NOMBRE_REGISTRO,
             description="P2: riesgo de desequilibrio diario por estación mediante Random Forest.",
         )
         client.update_model_version(
-            P2_NOMBRE_REGISTRO, version.version,
+            P2_NOMBRE_REGISTRO,
+            version.version,
             description=(
                 f"Mejor candidato por F1 macro de validación: {mejor['val_f1_score']:.6f}; "
                 f"combinación {mejor['combinacion']}; run {mejor['run_id']}."
             ),
         )
         tags = {
-            key: value for key, value in winner_run.data.tags.items()
+            key: value
+            for key, value in winner_run.data.tags.items()
             if key in ("equipo", "pregunta", "git_commit", "git_branch", "git_dirty", "entorno")
         }
-        tags.update({
-            "data_version": winner_run.data.params["version_datos"],
-            "source_run_id": mejor["run_id"],
-            "combinacion": mejor["combinacion"],
-            "criterio": "val_f1-score",
-            "val_f1_score": str(mejor["val_f1_score"]),
-        })
+        tags.update(
+            {
+                "data_version": winner_run.data.params["version_datos"],
+                "source_run_id": mejor["run_id"],
+                "combinacion": mejor["combinacion"],
+                "criterio": "val_f1-score",
+                "val_f1_score": str(mejor["val_f1_score"]),
+            }
+        )
         for key, value in tags.items():
             client.set_model_version_tag(P2_NOMBRE_REGISTRO, version.version, key, value)
         client.set_registered_model_alias(P2_NOMBRE_REGISTRO, "champion", version.version)
@@ -351,28 +374,40 @@ class ClassificationModel:
             raise ValueError("No hay configuraciones de Random Forest para entrenar.")
         mlflow.set_experiment(MLFLOW_EXPERIMENT)
         resultados = []
-        with mlflow.start_run(run_name="P2-random-forest-search", tags={
-            "equipo": EQUIPO, "pregunta": "P2", "tipo_modelo": "random-forest-search",
-        }):
+        with mlflow.start_run(
+            run_name="P2-random-forest-search",
+            tags={
+                "equipo": EQUIPO,
+                "pregunta": "P2",
+                "tipo_modelo": "random-forest-search",
+            },
+        ):
             for nombre, params in combinaciones.items():
                 self.entrenar_random_forest(params, nombre=nombre, nested=True)
-                resultados.append({
-                    "combinacion": nombre, "run_id": self.last_run_id,
-                    "model_uri": self.last_model_uri,
-                    "val_f1_score": self.metricas["val_f1-score"],
-                    "parametros": self.pipeline_rf.named_steps["clasificador"].get_params(),
-                })
+                resultados.append(
+                    {
+                        "combinacion": nombre,
+                        "run_id": self.last_run_id,
+                        "model_uri": self.last_model_uri,
+                        "val_f1_score": self.metricas["val_f1-score"],
+                        "parametros": self.pipeline_rf.named_steps["clasificador"].get_params(),
+                    }
+                )
             mejor = max(resultados, key=lambda result: result["val_f1_score"])
-            mlflow.log_params({"mejor_combinacion": mejor["combinacion"], "criterio": "val_f1-score"})
+            mlflow.log_params(
+                {"mejor_combinacion": mejor["combinacion"], "criterio": "val_f1-score"}
+            )
             mlflow.log_metric("best_val_f1_score", mejor["val_f1_score"])
             mlflow.set_tag("best_run_id", mejor["run_id"])
             mlflow.log_dict(resultados, "busqueda/resultados.json")
             version = self.registrar_mejor_modelo(mejor)
-            mlflow.log_params({
-                "modelo_registrado": P2_NOMBRE_REGISTRO,
-                "version_registrada": version.version,
-                "alias_modelo": "champion",
-            })
+            mlflow.log_params(
+                {
+                    "modelo_registrado": P2_NOMBRE_REGISTRO,
+                    "version_registrada": version.version,
+                    "alias_modelo": "champion",
+                }
+            )
         self.resultados_busqueda = resultados
         self.mejor_resultado = mejor
         return mejor
@@ -400,9 +435,7 @@ class ClassificationModel:
         dataset_ml = clasificacion_variable_objetivo_y_caracterizticas(balance_diario)
         dataset_ml = creacion_variables_memoria_historica(dataset_ml)
         # Keep earlier rows as history for lag calculations, but train only from this date onward.
-        dataset_ml = dataset_ml.loc[
-            dataset_ml["Fecha"] >= pd.Timestamp(P2_FECHA_INICIO)
-        ].copy()
+        dataset_ml = dataset_ml.loc[dataset_ml["Fecha"] >= pd.Timestamp(P2_FECHA_INICIO)].copy()
 
         # Persist the exact date-filtered dataset used by the P2 model.
         P2_DATASET_PARQUET.parent.mkdir(parents=True, exist_ok=True)
@@ -433,10 +466,16 @@ def main(
 ):
     """Sin opciones ejecuta P2_COMBINACIONES; con opciones entrena un solo Random Forest."""
     elegidos = {
-        "n_estimators": n_estimators, "max_depth": max_depth,
-        "min_samples_split": min_samples_split, "min_samples_leaf": min_samples_leaf,
-        "max_features": max_features, "bootstrap": bootstrap, "max_samples": max_samples,
-        "class_weight": class_weight, "random_state": random_state, "n_jobs": n_jobs,
+        "n_estimators": n_estimators,
+        "max_depth": max_depth,
+        "min_samples_split": min_samples_split,
+        "min_samples_leaf": min_samples_leaf,
+        "max_features": max_features,
+        "bootstrap": bootstrap,
+        "max_samples": max_samples,
+        "class_weight": class_weight,
+        "random_state": random_state,
+        "n_jobs": n_jobs,
     }
     elegidos = {key: value for key, value in elegidos.items() if value is not None}
     if not elegidos:
@@ -447,7 +486,9 @@ def main(
         try:
             params["max_features"] = float(max_features)
         except ValueError:
-            raise typer.BadParameter("Usa sqrt, log2 o una fracción entre 0 y 1 para max-features.")
+            raise typer.BadParameter(
+                "Usa sqrt, log2 o una fracción entre 0 y 1 para max-features."
+            )
     if class_weight == "none":
         params["class_weight"] = None
     if not params.get("bootstrap", True):

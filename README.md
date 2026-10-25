@@ -139,50 +139,50 @@ mlflow run . -e ingest --run-name ingest --env-manager uv
 ### Comandos para reproducir P1
 ```bash
 # Baseline (regresión lineal)
-mlflow run . -e train -P question=p1 -P model=linear --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e train -P question=p1 -P model=linear --env-manager uv
 
 # Búsqueda de hiperparámetros de LightGBM: 3 combinaciones de config.py (nested runs; elige el mejor modelo evaluando val_mae) y registra el mejor modelo como champion en el Model Registry
-mlflow run . -e search -P question=p1 -P model=lgbm --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e search -P question=p1 -P model=lgbm --env-manager uv
 
 # Hiperparámetros a elección: solo cambian los que se indiquen, el resto toma los valores de modelo_3 de config.py
-mlflow run . -e train -P question=p1 -P model=lgbm -P n_estimators=300 -P learning_rate=0.03 --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e train -P question=p1 -P model=lgbm -P n_estimators=300 -P learning_rate=0.03 --env-manager uv
 
 # Reproducir el mejor modelo (modelo_3 de config.py)
-mlflow run . -e train -P question=p1 -P model=lgbm -P n_estimators=400 -P learning_rate=0.05 -P num_leaves=31 --env-manager 
+mlflow run . --experiment-name mibici-equipo12 -e train -P question=p1 -P model=lgbm -P n_estimators=400 -P learning_rate=0.05 -P num_leaves=31 --env-manager uv
 ```
 
 ### Comandos para reproducir P2
 ```bash
 # Baseline (regresión logística)
-mlflow run . -e train -P question=p2 -P model=logistic_regression --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e train -P question=p2 -P model=logistic_regression --env-manager uv
 
 # Búsqueda de hiperparámetros de Random forest: 3 combinaciones de config.py (nested runs; elige el mejor modelo evaluando f1-score) y registra el mejor modelo como champion en el Model Registry
-mlflow run . -e search -P question=p2 -P model=random_forest --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e search -P question=p2 -P model=random_forest --env-manager uv
 
 # Hiperparámetros a elección: solo cambian los que se indiquen, el resto toma los valores de modelo_3 de config.py
-mlflow run . -e train -P question=p2 -P model=random_forest -P max_depth =16 -P min_samples_leaf=5 --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e train -P question=p2 -P model=random_forest -P max_depth=16 -P min_samples_leaf=5 --env-manager uv
 
 # Reproducir el mejor modelo (modelo_3 de config.py)
-mlflow run . -e train -P question=p2 -P model=random_forest -P max_depth=24 -P max_features=0.05 -P num_leaves=31 --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e train -P question=p2 -P model=random_forest -P max_depth=24 -P max_features=0.05 --env-manager uv
 ```
 
 ### Comandos para reproducir P3
 
 ```bash
 # Baseline de la entrega anterior
-mlflow run . -e train -P question=p3 -P model=kmeans -P k=4 -P stage=baseline --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e train -P question=p3 -P model=kmeans -P k=4 -P stage=baseline --env-manager uv
 
 # Búsqueda k = 3..8, PCA 0 o 2 (nested runs; elige por ARI de validación)
-mlflow run . -e search -P question=p3 -P model=kmeans --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e search -P question=p3 -P model=kmeans --env-manager uv
 
 # Candidatas
-mlflow run . -e train -P question=p3 -P model=kmeans -P k=3 -P pca=2 --env-manager uv
-mlflow run . -e train -P question=p3 -P model=gmm -P k=4 -P cov=spherical --env-manager uv
-mlflow run . -e train -P question=p3 -P model=aglomerativo -P k=3 -P linkage=ward --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e train -P question=p3 -P model=kmeans -P k=3 -P pca=2 --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e train -P question=p3 -P model=gmm -P k=4 -P cov=spherical --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e train -P question=p3 -P model=aglomerativo -P k=3 -P linkage=ward --env-manager uv
 
 # Model Registry: el modelo elegido como champion y el baseline como challenger
-mlflow run . -e register -P question=p3 -P run_id=<run_id de p3-kmeans-k3-pca2> -P alias=champion --env-manager uv
-mlflow run . -e register -P question=p3 -P run_id=<run_id de p3-kmeans-k4> -P alias=challenger --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e register -P question=p3 -P run_id=<run_id de p3-kmeans-k3-pca2> -P alias=champion --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e register -P question=p3 -P run_id=<run_id de p3-kmeans-k4> -P alias=challenger --env-manager uv
 ```
 
 ### Model Registry: aliases

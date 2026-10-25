@@ -30,6 +30,7 @@ share/python-wheels/
 MANIFEST
 mlruns/
 mlartifacts/
+/mi-bici-experiment/data_manifest.json
 
 # PyInstaller
 #   Usually these files are written by a python script from a template

@@ -236,6 +236,32 @@ modelo = mlflow.pyfunc.load_model("models:/mibici-equipo12-p3-grupos@champion")
 grupos = modelo.predict(perfil[["prop_fin_semana", "log_viajes_dia", "balance"]])
 ```
 
+## Pruebas
+
+Las pruebas del proyecto se encuentran en `mi-bici-experiment/tests/` y usan pytest:
+
+- `test_data.py` verifica la configuración del experimento, los rangos de fechas y la cobertura de los CSV.
+- `test_dataset.py` comprueba la carga y preparación de viajes, las descargas y el manifiesto de datos.
+- `test_p3.py` valida el procesamiento de viajes, los perfiles de estaciones y los modelos de clustering de P3.
+
+Para ejecutar todas las pruebas desde la raíz del repositorio en PowerShell:
+
+1. Activa el entorno virtual de Python:
+
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   ```
+
+   Si creaste el entorno dentro de `mi-bici-experiment/` como se indica en la instalación, usa `.\mi-bici-experiment\.venv\Scripts\Activate.ps1` en su lugar.
+
+2. Ejecuta todas las pruebas:
+
+   ```powershell
+   python -m pytest mi-bici-experiment/tests -v
+   ```
+
+La opción `-v` muestra el resultado de cada prueba.
+
 ## Flujo de trabajo con Git
 
 Se sigue [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow):

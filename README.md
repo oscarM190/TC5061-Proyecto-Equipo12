@@ -262,6 +262,51 @@ Para ejecutar todas las pruebas desde la raíz del repositorio en PowerShell:
 
 La opción `-v` muestra el resultado de cada prueba.
 
+## Validación del Parquet con Deepchecks
+
+El archivo `data/interim/trips_10_2024_to_09_2026.parquet` se valida con
+`mi_bici_experiment.data_validation`. Deepchecks 0.19.1 necesita un entorno
+separado: el entorno principal usa Python 3.14, pandas 3 y scikit-learn 1.9,
+con los que esta versión de Deepchecks no carga.
+
+Desde la raíz del repositorio en PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\mi-bici-experiment\run_deepchecks.ps1
+```
+
+El script usa `uv` del entorno principal `.venv` (o de `PATH`). Si falta
+Python 3.10, `uv` lo descarga. Crea `mi-bici-experiment/.venv-deepchecks-windows` una sola vez;
+en ejecuciones posteriores conserva el entorno, instala los paquetes de
+`requirements-deepchecks.txt`, ejecuta `tests/test_data_validation.py` y
+después valida el Parquet con Deepchecks.
+
+En Linux, con `uv` instalado y disponible en `PATH` (o en `.venv/bin/uv`),
+ejecutar desde la raíz del repositorio:
+
+```bash
+bash mi-bici-experiment/run_deepchecks.sh
+```
+
+La versión de Bash crea `mi-bici-experiment/.venv-deepchecks-linux` para que
+pueda coexistir con el entorno virtual de Windows en el mismo repositorio.
+
+La herramienta revisa el esquema y cuenta los nulos en **todas** las filas.
+Después toma una muestra reproducible y acotada de cada periodo para que
+Deepchecks analice tipos mixtos, nulos, filas repetidas y drift de IDs de
+estación, coordenadas y capacidad. Los umbrales iniciales son 0% de nulos,
+1% de filas repetidas y 0.2 de drift por variable; se deben ajustar según
+el uso del modelo. Por defecto, entrenamiento termina antes
+del 1 de julio de 2026 y prueba empieza ese día (periodos de P3). Se puede
+modificar con `--cutoff YYYY-MM-DD` y `--sample-size N`, así como proporcionar
+otro archivo con `--parquet RUTA`.
+
+Los resultados quedan en `reports/deepchecks/deepchecks.html`,
+`deepchecks.json` y `audit.json`. El comando devuelve código 1 cuando hay
+nulos o falla una condición de Deepchecks. Revisa las filas repetidas antes
+de eliminarlas: el Parquet conserva fechas truncadas al día y no incluye un
+ID único de viaje, por lo que viajes distintos pueden verse iguales.
+
 ## Flujo de trabajo con Git
 
 Se sigue [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow):

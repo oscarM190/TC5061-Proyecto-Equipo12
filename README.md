@@ -275,6 +275,8 @@ Desde la raíz del repositorio en PowerShell:
 powershell -ExecutionPolicy Bypass -File .\mi-bici-experiment\run_deepchecks.ps1
 ```
 
+![Ejecución de la validación con Deepchecks](mi-bici-experiment/docs/assets/deep_checks_execution.png)
+
 El script usa `uv` del entorno principal `.venv` (o de `PATH`). Si falta
 Python 3.10, `uv` lo descarga. Crea `mi-bici-experiment/.venv-deepchecks-windows` una sola vez;
 en ejecuciones posteriores conserva el entorno, instala los paquetes de
@@ -301,11 +303,51 @@ del 1 de julio de 2026 y prueba empieza ese día (periodos de P3). Se puede
 modificar con `--cutoff YYYY-MM-DD` y `--sample-size N`, así como proporcionar
 otro archivo con `--parquet RUTA`.
 
-Los resultados quedan en `reports/deepchecks/deepchecks.html`,
-`deepchecks.json` y `audit.json`. El comando devuelve código 1 cuando hay
-nulos o falla una condición de Deepchecks. Revisa las filas repetidas antes
-de eliminarlas: el Parquet conserva fechas truncadas al día y no incluye un
-ID único de viaje, por lo que viajes distintos pueden verse iguales.
+Los resultados quedan en `mi-bici-experiment/reports/deepchecks/`: `deepchecks.html`,
+`deepchecks.json` y `audit.json`. Para abrir el reporte HTML en el navegador predeterminado,
+ejecuta desde la raíz del repositorio:
+
+```powershell
+Start-Process .\mi-bici-experiment\reports\deepchecks\deepchecks.html
+```
+
+En Linux, usa:
+
+```bash
+xdg-open mi-bici-experiment/reports/deepchecks/deepchecks.html
+```
+
+![Reporte HTML generado por Deepchecks](mi-bici-experiment/docs/assets/deep_check_report.png)
+
+El comando devuelve código 1 cuando hay nulos o falla una condición de Deepchecks. Revisa las filas
+repetidas antes de eliminarlas: el Parquet conserva fechas truncadas al día y no incluye un ID único
+de viaje, por lo que viajes distintos pueden verse iguales.
+
+## Análisis de seguridad con Bandit y pip-audit
+
+Las dependencias del proyecto incluyen Bandit y pip-audit. Activa el entorno virtual en el que instalaste `mi-bici-experiment/requirements.txt` y ejecuta los comandos desde la raíz del repositorio.
+
+### Bandit
+
+Bandit analiza el código Python y señala patrones potencialmente inseguros. Este comando escanea el repositorio y excluye los entornos virtuales `.venv` y `venv`:
+
+```powershell
+python -m bandit -r . -x .venv,venv
+```
+
+![Resultado de un análisis Bandit](mi-bici-experiment/docs/assets/bandit_execution.png)
+
+### pip-audit
+
+pip-audit revisa los paquetes instalados en el entorno virtual activo y reporta vulnerabilidades conocidas:
+
+```powershell
+python -m pip_audit
+```
+
+![Resultado de un análisis pip-audit](mi-bici-experiment/docs/assets/pip_audit_execution.png)
+
+Revisa los hallazgos y actualiza las versiones afectadas antes de integrar cambios. Los resultados pueden variar según las versiones instaladas y las vulnerabilidades registradas al momento de ejecutar las herramientas.
 
 ## Flujo de trabajo con Git
 

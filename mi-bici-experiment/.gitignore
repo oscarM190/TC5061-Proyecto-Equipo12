@@ -4,6 +4,9 @@
 # MLflow local y figuras que regenera cada run (se guardan como artefactos)
 mlflow.db
 /reports/figures/p3/
+/reports/deepchecks/
+/.venv-deepchecks-windows/
+/.venv-deepchecks-linux/
 
 # Modelos serializados (se registran en MLflow, no en Git)
 *.pkl

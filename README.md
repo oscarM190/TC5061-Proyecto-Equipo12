@@ -244,12 +244,12 @@ Las pruebas del proyecto se encuentran en `mi-bici-experiment/tests/` y usan pyt
 - `test_dataset.py` comprueba la carga y preparación de viajes, las descargas y el manifiesto de datos.
 - `test_p3.py` valida el procesamiento de viajes, los perfiles de estaciones y los modelos de clustering de P3.
 
-Para ejecutar todas las pruebas desde la raíz del repositorio en PowerShell:
+Para ejecutar todas las pruebas desde la raíz del repositorio en PowerShell o Bash:
 
 1. Activa el entorno virtual de Python:
 
-   ```powershell
-   .\.venv\Scripts\Activate.ps1
+   ```bash
+   source .venv/bin/activate          # Windows: .venv\Scripts\activate
    ```
 
    Si creaste el entorno dentro de `mi-bici-experiment/` como se indica en la instalación, usa `.\mi-bici-experiment\.venv\Scripts\Activate.ps1` en su lugar.

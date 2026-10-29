@@ -1,13 +1,3 @@
-"""Pruebas de P1 (regresión de viajes diarios por estación) con datos sintéticos.
-
-Las pruebas no leen el Parquet real (data/interim no se versiona): generan viajes sintéticos
-pequeños con las mismas columnas que produce la ingesta.
-
-La limpieza, el conteo diario y los rezagos básicos ya se prueban en tests/test_features.py.
-Aquí se cubren los casos complementarios de ingeniería de variables y, sobre todo, el modelo
-de P1: partición, construcción, entrenamiento, evaluación y reproducibilidad.
-"""
-
 import numpy as np
 import pandas as pd
 import pytest

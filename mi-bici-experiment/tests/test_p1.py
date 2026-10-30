@@ -4,7 +4,7 @@ import pytest
 from lightgbm import LGBMRegressor
 from sklearn.linear_model import LinearRegression
 
-from mi_bici_experiment.config import (FECHA_INICIO_COL, OBJETIVO_COL, RANDOM_STATE, STATION_COL)
+from mi_bici_experiment.config import (FECHA_INICIO_COL,OBJETIVO_COL,P1_COMBINACIONES, RANDOM_STATE,STATION_COL,TEST_PARTICION)
 from mi_bici_experiment.features import agregar_variables, construir_viajes_diarios
 from mi_bici_experiment.modeling.modules.p1_regression.models import (RegressionLGBM, RegressionModel)
 
@@ -147,7 +147,7 @@ class TestParticion:
         assert m.entrenamiento["date"].max() < m.validacion["date"].min()
         assert m.validacion["date"].max() < m.prueba["date"].min()
         assert not todo.duplicated([STATION_COL, "date"]).any()
-        assert len(m.prueba) / len(todo) == pytest.approx(0.15, abs=0.05)
+        assert len(m.prueba) / len(todo) == pytest.approx(TEST_PARTICION, abs=0.05)
 
     def test_conjuntos_tienen_todas_las_variables(self, modelo_preparado):
         m = modelo_preparado
@@ -175,7 +175,7 @@ class TestModelo:
         modelo =lgbm_preparado.construir_modelo().named_steps["modelo"]
         assert isinstance(modelo, LGBMRegressor)
         assert modelo.get_params()["random_state"] == RANDOM_STATE
-        assert modelo.get_params()["n_estimators"] == 30
+        assert modelo.get_params()["n_estimators"] == HP_LGBM["n_estimators"]
 
     def test_predice_con_estacion_desconocida(self, modelo_preparado):
         m= modelo_preparado
@@ -232,26 +232,31 @@ class TestEvaluar:
 # ---------------------------------------------
 class TestReproducibilidad:
     @pytest.mark.parametrize(
-        "clase", [RegressionModel, RegressionLGBM], ids=["baseline", "lightgbm"]
+        ("clase", "hp"),
+        [
+            (RegressionModel, {}),
+            (RegressionLGBM, HP_LGBM),
+            (RegressionLGBM, P1_COMBINACIONES["modelo_1"]),
+        ],
+        ids=["baseline", "lightgbm_prueba", "lightgbm_modelo_1"],
     )
-    def test_misma_semilla_mismas_predicciones_y_metricas(self, parchar_carga, clase):
+    def test_misma_semilla_mismas_predicciones_y_metricas(self, parchar_carga, clase, hp):
         """Dos ejecuciones independientes producen las mismas predicciones y métricas."""
         corridas = []
         for _ in range(2):
             m = clase(INICIO, FIN)
-            m.hiperparametros = dict(HP_LGBM)
+            m.hiperparametros = dict(hp)
             m.preparar_datos()
             m.entrenar()
             m.evaluar()
             corridas.append((m.y_pred.copy(), dict(m.metricas)))
-        print(f"\n[{clase.__name__}] corrida 1: {corridas[0][1]}")
-        print(f"[{clase.__name__}] corrida 2: {corridas[1][1]}")
-        print(
-            f"[{clase.__name__}] diferencia máxima en predicciones: "
-            f"{np.abs(corridas[0][0] - corridas[1][0]).max()}"
+        np.testing.assert_allclose(
+            corridas[0][0], corridas[1][0], rtol=0, atol=1e-12,
+            err_msg=f"[{clase.__name__}] las predicciones difieren entre corridas",
         )
-        np.testing.assert_allclose(corridas[0][0], corridas[1][0], rtol=0, atol=1e-12)
-        assert corridas[0][1] == pytest.approx(corridas[1][1])
+        assert corridas[0][1] == pytest.approx(corridas[1][1]), (
+            f"[{clase.__name__}] métricas distintas: {corridas[0][1]} vs {corridas[1][1]}"
+        )
 
     def test_control_negativo_otros_datos_otras_predicciones(self,lgbm_preparado):
         m = lgbm_preparado

@@ -240,9 +240,25 @@ grupos = modelo.predict(perfil[["prop_fin_semana", "log_viajes_dia", "balance"]]
 
 Las pruebas del proyecto se encuentran en `mi-bici-experiment/tests/` y usan pytest:
 
-- `test_data.py` verifica la configuración del experimento, los rangos de fechas y la cobertura de los CSV.
 - `test_dataset.py` comprueba la carga y preparación de viajes, las descargas y el manifiesto de datos.
-- `test_p3.py` valida el procesamiento de viajes, los perfiles de estaciones y los modelos de clustering de P3.
+- `test_features.py` cubre las funciones de `features.py` de P1, P2 y P3 (rezagos, promedios móviles,
+  balance, umbrales de riesgo y perfiles de estación).
+- `test_data_validation.py` prueba el esquema y el muestreo que usa la validación con Deepchecks.
+- `test_p2.py` prueba el baseline y el Random Forest de P2.
+- `test_p3.py` cubre P3: perfiles de estaciones sin datos posteriores, partición temporal, los cuatro
+  modelos de clustering, la configuración y la validación de perfiles. Incluye:
+  - **Reproducibilidad del entrenamiento:** con la misma semilla, dos ajustes de cada modelo dan las
+    mismas etiquetas, predicciones y métricas; `entrenar` (la función que usa `mlflow run`) registra
+    las mismas métricas y parámetros en dos corridas de MLflow; la búsqueda con nested runs recupera
+    los grupos sintéticos.
+  - **Casos límite:** periodo sin viajes, umbral `min_viajes`, estaciones que solo salen en fin de
+    semana o solo reciben, ninguna estación común entre periodos, más grupos que estaciones y perfiles
+    con nulos.
+- `test_seguridad.py` revisa que Git no versione `.env`, bases de MLflow, modelos ni datos de MiBici,
+  que `.gitignore` los excluya y que ningún archivo versionado contenga tokens, llaves o contraseñas.
+
+Las pruebas usan datos sintéticos, no necesitan el Parquet y las de MLflow escriben en un directorio
+temporal, así que corren en un clon limpio y en GitHub Actions (`.github/workflows/mlflow.yml`).
 
 Para ejecutar todas las pruebas desde la raíz del repositorio en PowerShell o Bash:
 
@@ -260,7 +276,10 @@ Para ejecutar todas las pruebas desde la raíz del repositorio en PowerShell o B
    python -m pytest mi-bici-experiment/tests -v
    ```
 
-La opción `-v` muestra el resultado de cada prueba.
+La opción `-v` muestra el resultado de cada prueba. Para correr solo un grupo, por ejemplo la
+reproducibilidad de P3: `python -m pytest mi-bici-experiment/tests/test_p3.py -k "semilla or reproducible" -v`.
+
+![Ejecución de pytest](mi-bici-experiment/docs/assets/pytest_execution.png)
 
 ## Validación del Parquet con Deepchecks
 
@@ -323,6 +342,40 @@ El comando devuelve código 1 cuando hay nulos o falla una condición de Deepche
 repetidas antes de eliminarlas: el Parquet conserva fechas truncadas al día y no incluye un ID único
 de viaje, por lo que viajes distintos pueden verse iguales.
 
+### Validación de los perfiles de P3
+
+P3 no recibe viajes sino una fila por estación (`prop_fin_semana`, `log_viajes_dia`, `balance`).
+[`validacion_p3.py`](mi-bici-experiment/mi_bici_experiment/validacion_p3.py) valida esa tabla en
+entrenamiento (2025-07 a 2026-06) y en prueba (2026-07 a 2026-09). Son dos pasos porque los perfiles
+se construyen con `features.py` (entorno principal) y Deepchecks corre en Python 3.10:
+
+```bash
+python -m mi_bici_experiment.validacion_p3 exportar   # desde mi-bici-experiment/, entorno principal
+bash mi-bici-experiment/run_deepchecks.sh              # incluye el paso `validar` de P3
+```
+
+| Chequeo | Herramienta | Resultado (datos 2024-10 a 2026-09) |
+|---------|-------------|-------------------------------------|
+| Nulos, tipos mixtos, valor único, perfiles duplicados, outliers | Deepchecks (train y test) | Aprobado |
+| IDs de estación únicos y rangos (`prop_fin_semana` ∈ [0, 1], `balance` ∈ [−1, 1], `log_viajes_dia` ≥ 0) | `revisar_perfiles` | Aprobado |
+| Drift por variable (Kolmogorov-Smirnov) | Deepchecks `FeatureDrift` | 0.107, 0.076 y 0.169 (< 0.2) |
+| Drift multivariado (clasificador de dominio) | Deepchecks `MultivariateDrift` | **0.394 > 0.2**: falla |
+| Mismo drift solo con estaciones que ya existían | Deepchecks | 0.19 (< 0.2) |
+| Estaciones nuevas en prueba | `revisar_perfiles` | **79** de 454, sin grupo de entrenamiento |
+
+Hallazgo: el drift multivariado viene de las 79 estaciones abiertas después del entrenamiento; con las
+375 estaciones comunes baja a 0.19. Por eso el ARI de estabilidad de P3 se mide solo con estaciones
+comunes, y las nuevas se asignan con `predict` al grupo más cercano. `balance` es la variable que más
+cambia (KS ≈ 0.17) entre el año de entrenamiento y el trimestre de julio a septiembre.
+
+El script termina con código 1 si falla la integridad. El drift se reporta en
+`reports/deepchecks/p3/` (`integridad_train.html`, `integridad_test.html`, `drift.html`,
+`drift_estaciones_comunes.html` y `audit_p3.json`) sin detener el proceso: un cambio estacional
+es esperable y es lo que mide el ARI de estabilidad.
+
+![Validación de los perfiles de P3 con Deepchecks](mi-bici-experiment/docs/assets/deepchecks_p3_execution.png)
+![Reporte de drift de P3](mi-bici-experiment/docs/assets/deepchecks_p3_drift.png)
+
 ## Análisis de seguridad con Bandit y pip-audit
 
 Las dependencias del proyecto incluyen Bandit y pip-audit. Activa el entorno virtual en el que instalaste `mi-bici-experiment/requirements.txt` y ejecuta los comandos desde la raíz del repositorio.
@@ -348,6 +401,47 @@ python -m pip_audit
 ![Resultado de un análisis pip-audit](mi-bici-experiment/docs/assets/pip_audit_execution.png)
 
 Revisa los hallazgos y actualiza las versiones afectadas antes de integrar cambios. Los resultados pueden variar según las versiones instaladas y las vulnerabilidades registradas al momento de ejecutar las herramientas.
+
+### Hallazgos y correcciones
+
+Para auditar las versiones fijadas (no solo el entorno activo):
+
+```bash
+python -m pip_audit -r mi-bici-experiment/requirements.txt
+```
+
+El 2026-10-29 pip-audit reportó 3 vulnerabilidades, corregidas subiendo las versiones fijadas:
+
+| Paquete | Versión | Vulnerabilidad | Corrección |
+|---------|---------|----------------|------------|
+| certifi | 2026.7.22 | PYSEC-2026-4320: incluye una CA raíz con intermedias comprometidas | 2026.10.19 |
+| mlflow (y mlflow_skinny, mlflow_tracing) | 3.17.0 | CVE-2026-53995: path traversal en el endpoint de trazas del servidor de tracking | 3.17.2 |
+
+Después de la corrección: `No known vulnerabilities found`.
+
+![pip-audit después de la corrección](mi-bici-experiment/docs/assets/pip_audit_requirements.png)
+
+Bandit sobre `mi_bici_experiment/` no reporta hallazgos de severidad alta. Los de severidad baja o media
+están revisados:
+
+| Hallazgo | Ubicación | Por qué se acepta |
+|----------|-----------|-------------------|
+| B310 `urlopen` (media) | `dataset.py` | Solo abre las URL `https://` fijas de `config.py`, no entradas del usuario |
+| B404, B603, B607 `subprocess` (baja) | `tracking.py` | Ejecuta `git` con argumentos fijos y sin `shell=True` para obtener el commit |
+
+### Credenciales y datos sensibles
+
+- Las variables de entorno se leen de `mi-bici-experiment/.env` (ignorado por Git) con python-dotenv.
+  [`.env.example`](mi-bici-experiment/.env.example) lista las que usa el proyecto (`MLFLOW_TRACKING_URI`
+  y, si el servidor tiene autenticación, `MLFLOW_TRACKING_USERNAME` / `MLFLOW_TRACKING_PASSWORD`) sin
+  valores secretos: `cp mi-bici-experiment/.env.example mi-bici-experiment/.env`.
+- `.gitignore` excluye `.env`, `data/`, `mlflow.db`, `mlruns/`, `mlartifacts/`, modelos serializados y los
+  reportes de Deepchecks. `tests/test_seguridad.py` lo comprueba en cada `pytest` y en CI.
+- Los datos de MiBici no incluyen nombres ni identificadores personales; a MLflow solo se registran
+  agregados por estación y la versión (hash) de los datos.
+- Un `mlflow.db` se subió por error en c8b88f2 y se quitó en 6a47b0d. Sigue en el historial; se revisó
+  y solo tiene corridas de experimentos (con el usuario del sistema y rutas locales en las etiquetas de
+  MLflow), sin credenciales (la tabla `secrets` está vacía) ni datos de usuarios de MiBici.
 
 ## Flujo de trabajo con Git
 

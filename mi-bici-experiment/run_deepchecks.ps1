@@ -46,6 +46,13 @@ try {
     Write-Host 'Validating the trips Parquet with Deepchecks...'
     & $pythonPath -m mi_bici_experiment.data_validation
     if ($LASTEXITCODE -ne 0) { throw 'Deepchecks validation failed. Review reports/deepchecks.' }
+
+    Write-Host 'Validating the P3 station profiles with Deepchecks...'
+    if (-not (Test-Path 'data/processed/p3_perfil_train.parquet')) {
+        throw 'P3 profiles not found. Run first: python -m mi_bici_experiment.validacion_p3 exportar'
+    }
+    & $pythonPath -m mi_bici_experiment.validacion_p3 validar
+    if ($LASTEXITCODE -ne 0) { throw 'P3 Deepchecks validation failed. Review reports/deepchecks/p3.' }
 } finally {
     Pop-Location
 }

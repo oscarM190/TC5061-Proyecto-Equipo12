@@ -38,3 +38,11 @@ printf 'Running data validation tests...\n'
 
 printf 'Validating the trips Parquet with Deepchecks...\n'
 "$python_path" -m mi_bici_experiment.data_validation
+
+printf 'Validating the P3 station profiles with Deepchecks...\n'
+if [[ -f data/processed/p3_perfil_train.parquet ]]; then
+    "$python_path" -m mi_bici_experiment.validacion_p3 validar
+else
+    printf 'P3 profiles not found. Run first: python -m mi_bici_experiment.validacion_p3 exportar\n' >&2
+    exit 1
+fi

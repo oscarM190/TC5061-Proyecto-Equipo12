@@ -225,11 +225,14 @@ def test_grupos_no_dependen_de_la_semilla():
 
 @pytest.fixture
 def mlflow_temporal(tmp_path, monkeypatch):
-    """Servidor de tracking local y desechable; la versión de datos no depende del manifiesto."""
+    """Servidor de tracking local y desechable; la versión de datos y el commit no dependen del
+    manifiesto ni de Git, así que corre también fuera de un clon (por ejemplo, un ZIP)."""
     mlflow.set_tracking_uri(f"sqlite:///{tmp_path / 'mlflow.db'}")
     mlflow.create_experiment("p3-pruebas", artifact_location=(tmp_path / "artefactos").as_uri())
     mlflow.set_experiment("p3-pruebas")
     monkeypatch.setattr(p3, "version_datos_manifiesto", lambda: "sha256-prueba")
+    monkeypatch.setattr(p3, "git_info", lambda: {"git_commit": "prueba", "git_branch": "prueba",
+                                                 "git_dirty": "false"})
     yield mlflow.MlflowClient()
     mlflow.set_tracking_uri(None)
 

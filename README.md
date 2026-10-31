@@ -244,6 +244,8 @@ Las pruebas del proyecto se encuentran en `mi-bici-experiment/tests/` y usan pyt
 - `test_features.py` cubre las funciones de `features.py` de P1, P2 y P3 (rezagos, promedios móviles,
   balance, umbrales de riesgo y perfiles de estación).
 - `test_data_validation.py` prueba el esquema y el muestreo que usa la validación con Deepchecks.
+- `test_p1.py` prueba P1: variables sin fuga de datos, partición cronológica, baseline y LightGBM,
+  métricas y reproducibilidad del entrenamiento con la configuración real.
 - `test_p2.py` prueba el baseline y el Random Forest de P2.
 - `test_p3.py` cubre P3: perfiles de estaciones sin datos posteriores, partición temporal, los cuatro
   modelos de clustering, la configuración y la validación de perfiles. Incluye:

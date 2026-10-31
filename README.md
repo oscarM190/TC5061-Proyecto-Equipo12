@@ -351,11 +351,6 @@ P3 no recibe viajes sino una fila por estación (`prop_fin_semana`, `log_viajes_
 entrenamiento (2025-07 a 2026-06) y en prueba (2026-07 a 2026-09). Son dos pasos porque los perfiles
 se construyen con `features.py` (entorno principal) y Deepchecks corre en Python 3.10:
 
-```bash
-python -m mi_bici_experiment.validacion_p3 exportar   # desde mi-bici-experiment/, entorno principal
-bash mi-bici-experiment/run_deepchecks.sh              # incluye el paso `validar` de P3
-```
-
 | Chequeo | Herramienta | Resultado (datos 2024-10 a 2026-09) |
 |---------|-------------|-------------------------------------|
 | Nulos, tipos mixtos, valor único, perfiles duplicados, outliers | Deepchecks (train y test) | Aprobado |

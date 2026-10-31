@@ -3,7 +3,6 @@ from loguru import logger
 import pandas as pd
 import numpy as np
 
-from mi_bici_experiment.plots import print_balance_normalizado
 from mi_bici_experiment.config import (
     LAGS,
     PM_DIAS,
@@ -109,6 +108,7 @@ def agregar_balance_neto_y_normalizado(df):
     balance_diario['Balance_Normalizado'] = (
         balance_diario['Balance_Neto'] / balance_diario['dpcapacity']
     )
+    from mi_bici_experiment.plots import print_balance_normalizado
     print_balance_normalizado(balance_diario)
     return balance_diario
 

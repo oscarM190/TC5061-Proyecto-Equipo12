@@ -1,14 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Keep the Linux environment separate from the Windows one in shared checkouts.
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd -- "$project_root/.." && pwd)"
-environment_path="$project_root/.venv-deepchecks-linux"
-python_path="$environment_path/bin/python"
-local_uv_path="$repository_root/.venv/bin/uv"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        # Git Bash runs on Windows, so uv creates a Windows-style environment.
+        windows_host=true
+        environment_path="$project_root/.venv-deepchecks-windows"
+        python_path="$environment_path/Scripts/python.exe"
+        local_uv_path="$repository_root/.venv/Scripts/uv.exe"
+        ;;
+    *)
+        windows_host=false
+        environment_path="$project_root/.venv-deepchecks-linux"
+        python_path="$environment_path/bin/python"
+        local_uv_path="$repository_root/.venv/bin/uv"
+        ;;
+esac
 
-if [[ -x "$local_uv_path" ]]; then
+if [[ -x "$local_uv_path" || ( "$windows_host" == true && -f "$local_uv_path" ) ]]; then
     uv_path="$local_uv_path"
 elif command -v uv >/dev/null 2>&1; then
     uv_path="$(command -v uv)"
@@ -17,7 +28,7 @@ else
     exit 1
 fi
 
-if [[ -x "$python_path" ]]; then
+if [[ -x "$python_path" || ( "$windows_host" == true && -f "$python_path" ) ]]; then
     printf 'Using existing Python 3.10 environment: %s\n' "$environment_path"
 elif [[ -e "$environment_path" || -L "$environment_path" ]]; then
     printf 'An incomplete environment exists at %s. Remove or repair it before retrying.\n' "$environment_path" >&2
@@ -39,10 +50,8 @@ printf 'Running data validation tests...\n'
 printf 'Validating the trips Parquet with Deepchecks...\n'
 "$python_path" -m mi_bici_experiment.data_validation
 
+printf 'Exporting the P3 station profiles with the Deepchecks Python 3.10 environment...\n'
+"$python_path" -m mi_bici_experiment.validacion_p3 exportar
+
 printf 'Validating the P3 station profiles with Deepchecks...\n'
-if [[ -f data/processed/p3_perfil_train.parquet ]]; then
-    "$python_path" -m mi_bici_experiment.validacion_p3 validar
-else
-    printf 'P3 profiles not found. Run first: python -m mi_bici_experiment.validacion_p3 exportar\n' >&2
-    exit 1
-fi
+"$python_path" -m mi_bici_experiment.validacion_p3 validar

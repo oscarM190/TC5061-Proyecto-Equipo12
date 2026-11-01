@@ -17,3 +17,4 @@ lightgbm==4.7.0
 pytest==9.2.0
 pip_audit==2.10.1
 bandit==1.9.4
+uv==0.13.6

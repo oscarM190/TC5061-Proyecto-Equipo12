@@ -2,13 +2,14 @@
 
 `data_validation.py` revisa los viajes; aquí se revisa la tabla que realmente entra a P3 (una
 fila por estación con prop_fin_semana, log_viajes_dia y balance) en entrenamiento y en prueba.
-Deepchecks 0.19.1 solo carga en Python 3.10 y `features.py` necesita el entorno del proyecto,
-por eso son dos pasos:
+Deepchecks 0.19.1 solo carga en Python 3.10. `exportar` y `validar` pueden ejecutarse en ese
+entorno; las dependencias de gráficos de P2 se importan solo al generar gráficos. Ambos runners
+automatizan las etapas `exportar` y `validar` en ese entorno.
 
-    python -m mi_bici_experiment.validacion_p3 exportar   # entorno del proyecto
-    python -m mi_bici_experiment.validacion_p3 validar    # entorno de Deepchecks
+    python -m mi_bici_experiment.validacion_p3 exportar   # entorno del proyecto o Python 3.10
+    python -m mi_bici_experiment.validacion_p3 validar    # entorno de Deepchecks (Python 3.10)
 
-`run_deepchecks.sh` / `.ps1` ejecutan `validar` después de la validación de viajes.
+`run_deepchecks.sh` / `.ps1` ejecutan ambas etapas P3 después de la validación de viajes.
 """
 
 from __future__ import annotations

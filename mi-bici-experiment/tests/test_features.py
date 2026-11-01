@@ -4,6 +4,7 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 import mi_bici_experiment.features as features
+import mi_bici_experiment.plots as plots
 from mi_bici_experiment.config import DESTINO_COL, FECHA_FIN_COL, FECHA_INICIO_COL, STATION_COL
 
 
@@ -59,8 +60,8 @@ def test_agregar_variables_uses_previous_days_per_station():
 
 # [TEST 4] Daily balances use arrival dates and fill only each station's active period.
 def test_agregar_balance_counts_overnight_arrivals_and_active_days(monkeypatch):
-    # Patch the name used by the feature module so the test isolates calculations.
-    monkeypatch.setattr(features, "print_balance_normalizado", lambda frame: None)
+    # The plotting dependency is resolved lazily within the feature function.
+    monkeypatch.setattr(plots, "print_balance_normalizado", lambda frame: None)
     viajes = pd.DataFrame({
         "Inicio_del_viaje": pd.to_datetime(["2024-01-01 23:00", "2024-01-03 10:00", "2024-01-04 10:00"]),
         "Fin_del_viaje": pd.to_datetime(["2024-01-02 01:00", "2024-01-03 11:00", "2024-01-04 11:00"]),
@@ -83,7 +84,7 @@ def test_agregar_balance_counts_overnight_arrivals_and_active_days(monkeypatch):
 # [TEST 5] Nonpositive, missing, and infinite station capacities are excluded.
 @pytest.mark.parametrize("capacity", [0, -1, np.nan, np.inf, -np.inf])
 def test_agregar_balance_excludes_invalid_capacities(monkeypatch, capacity):
-    monkeypatch.setattr(features, "print_balance_normalizado", lambda frame: None)
+    monkeypatch.setattr(plots, "print_balance_normalizado", lambda frame: None)
     viajes = pd.DataFrame({
         "Inicio_del_viaje": pd.to_datetime(["2024-01-01", "2024-01-01"]),
         "Fin_del_viaje": pd.to_datetime(["2024-01-01", "2024-01-01"]),

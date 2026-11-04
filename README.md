@@ -440,6 +440,68 @@ están revisados:
   y solo tiene corridas de experimentos (con el usuario del sistema y rutas locales en las etiquetas de
   MLflow), sin credenciales (la tabla `secrets` está vacía) ni datos de usuarios de MiBici.
 
+## Como usar el API para obtener predicciones del modelo P1:
+
+La API usa FastAPI y carga el modelo P1 desde MLflow cuando recibe la primera solicitud de predicción. Antes de iniciar la API, asegúrate de que el [servidor de tracking de MLflow](#servidor-de-tracking) esté activo en `http://127.0.0.1:5000` y que el registro `mibici-equipo12-p1-demanda` tenga un modelo con el alias `champion`. Si aún no existe, puedes crearlo con el comando de búsqueda de P1 de la sección [Comandos para reproducir P1](#comandos-para-reproducir-p1).
+
+Desde la carpeta `mi-bici-experiment`, con el entorno virtual activado y las dependencias instaladas según [Instalación](#instalación), inicia la API en una terminal:
+
+```bash
+python -m uvicorn mi_bici_experiment.api:app --host 127.0.0.1 --port 8000 --reload
+```
+
+La opción `--reload` reinicia el servidor cuando cambia el código y es útil durante el desarrollo. La API queda disponible en `http://127.0.0.1:8000`. Para comprobar que responde, abre `http://127.0.0.1:8000/health`; esta ruta muestra el estado y la URI del modelo configurado, pero no carga el modelo. También puedes abrir `http://127.0.0.1:8000/docs` para probar las rutas desde la interfaz interactiva de FastAPI.
+
+Envía una solicitud `POST` a `/predict` con un objeto JSON que incluya estas siete variables del modelo:
+
+```json
+{
+  "trips_lag_1": 12,
+  "trips_lag_7": 9,
+  "trips_roll_mean_7": 10.5,
+  "is_weekend": 0,
+  "origen_id": 42,
+  "dayofweek": 2,
+  "month": 7
+}
+```
+
+`is_weekend` debe ser `0` o `1`; `dayofweek` usa `0` para lunes y `6` para domingo. Los rezagos y el promedio deben ser no negativos, `origen_id` debe ser positivo y `month` debe estar entre `1` y `12`. Por ejemplo, desde Python puedes enviar el JSON así:
+
+```python
+import json
+from urllib.request import Request, urlopen
+
+payload = {
+    "trips_lag_1": 12,
+    "trips_lag_7": 9,
+    "trips_roll_mean_7": 10.5,
+    "is_weekend": 0,
+    "origen_id": 42,
+    "dayofweek": 2,
+    "month": 7,
+}
+request = Request(
+    "http://127.0.0.1:8000/predict",
+    data=json.dumps(payload).encode("utf-8"),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urlopen(request) as response:
+    print(json.loads(response.read()))
+```
+
+Una respuesta exitosa incluye la predicción de viajes diarios y la URI del modelo utilizado:
+
+```json
+{
+  "prediction": 12.5,
+  "model": "models:/mibici-equipo12-p1-demanda@champion"
+}
+```
+
+Una solicitud incompleta o con valores fuera de rango devuelve `422`. Si MLflow o el modelo no están disponibles, `/predict` devuelve `503`.
+
 ## Flujo de trabajo con Git
 
 Se sigue [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow):

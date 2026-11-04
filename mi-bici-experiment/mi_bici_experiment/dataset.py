@@ -15,6 +15,7 @@ import certifi
 from mi_bici_experiment.config import (
     INTERIM_DATA_DIR,
     MI_BICI_CSVS,
+    NOMENCLATURA_CSV,
     PROJ_ROOT,
     RAW_DATA_DIR,
 )
@@ -86,7 +87,7 @@ class DatasetManager:
 
         # Hash every source CSV and the generated Parquet file.
         source_files = sorted(input_path.glob("datos_abiertos_*.csv"))
-        nomenclature_path = input_path / "nomenclatura_2026_09.csv"
+        nomenclature_path = input_path / NOMENCLATURA_CSV.name
         files = [
             {
                 "path": self._manifest_file_path(path),
@@ -276,7 +277,7 @@ class DatasetManager:
         # Ensure the output folder exists and require the station catalog.
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        nomenclature_path = Path(input_path) / "nomenclatura_2026_09.csv"
+        nomenclature_path = input_path / NOMENCLATURA_CSV.name
         if not nomenclature_path.is_file():
             raise FileNotFoundError(f"Station nomenclature file not found: {nomenclature_path}")
 

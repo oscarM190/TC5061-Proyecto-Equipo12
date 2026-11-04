@@ -155,7 +155,7 @@ def test_save_enriches_filters_sorts_and_types_trips(manager, tmp_path, monkeypa
         {"id": 10, "longitude": -103.3, "latitude": 20.7, "dpcapacity": ""},
         {"id": 11, "longitude": -103.3, "latitude": 20.7, "dpcapacity": 128},
     ]
-    write_csv(tmp_path / "nomenclatura_2026_09.csv", ["id", "longitude", "latitude", "dpcapacity"], stations)
+    write_csv(tmp_path / "nomenclatura_2026_10.csv", ["id", "longitude", "latitude", "dpcapacity"], stations)
     rows = [trip("2024-10-29 14:30:00", "2024-10-29 15:00:00", origin=1),
             trip("2024-10-27 14:30:00", "2024-10-28 15:00:00", origin=2)]
     rows.extend(trip("2024-10-28 14:30:00", "2024-10-28 15:00:00", origin=i) for i in range(3, 13))
@@ -247,7 +247,7 @@ def test_write_manifest_records_sources_output_and_hashes(manager, tmp_path, mon
     monkeypatch.setattr(dataset_module, "PROJ_ROOT", tmp_path / "project")
     first = tmp_path / "datos_abiertos_2024_10.csv"
     second = tmp_path / "datos_abiertos_2024_11.csv"
-    catalog = tmp_path / "nomenclatura_2026_09.csv"
+    catalog = tmp_path / "nomenclatura_2026_10.csv"
     for path, content in [(first, b"first"), (second, b"second"), (catalog, b"stations")]:
         path.write_bytes(content)
     (tmp_path / "unrelated.csv").write_bytes(b"ignored")

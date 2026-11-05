@@ -502,6 +502,153 @@ Una respuesta exitosa incluye la predicción de viajes diarios y la URI del mode
 
 Una solicitud incompleta o con valores fuera de rango devuelve `422`. Si MLflow o el modelo no están disponibles, `/predict` devuelve `503`.
 
+## API con Docker
+
+La imagen ejecuta la misma API de **P1 (demanda diaria por estación)** descrita arriba. Necesitas
+Docker instalado y activo, y un modelo `mibici-equipo12-p1-demanda` con alias `champion` en MLflow.
+El contenedor descarga el modelo en su primera predicción; no entrena modelos ni incluye los datos
+de MiBici, la base de datos o los artefactos de MLflow en la imagen.
+
+### 1. Preparar la conexión con MLflow
+
+Los comandos de esta sección se ejecutan desde la **raíz del repositorio**. En una terminal con el
+entorno virtual del proyecto activado, inicia el servidor que contiene tu registro de modelos:
+
+```bash
+mlflow server \
+  --backend-store-uri sqlite:///mlflow.db \
+  --host 0.0.0.0 \
+  --port 5000 \
+  --allowed-hosts "localhost:*,127.0.0.1:*,host.docker.internal:*"
+```
+
+Si ya tienes MLflow escuchando en el puerto 5000, reinícialo con esta configuración en lugar de
+iniciar una segunda instancia. Usa la misma base de datos y almacenamiento de artefactos con los
+que entrenaste P1. `--host 0.0.0.0` permite la conexión desde Docker y `--allowed-hosts` acepta el
+nombre usado por el contenedor, según la [configuración de red de MLflow](https://mlflow.org/docs/latest/self-hosting/security/network/).
+
+Dentro del contenedor, `localhost` apunta al propio contenedor. Para acceder al MLflow que corre en
+tu equipo se usa `http://host.docker.internal:5000`. Docker Desktop proporciona este nombre; el
+comando de ejecución incluye también el mapeo `host-gateway` para Docker Engine en Linux, como
+indica la [documentación de Docker](https://docs.docker.com/reference/cli/docker/container/run/#add-host).
+
+### 2. Construir la imagen
+
+En otra terminal, desde la raíz del repositorio:
+
+```bash
+docker build -t mibici-api:local \
+  -f mi-bici-experiment/Dockerfile \
+  mi-bici-experiment
+```
+
+El contexto de construcción es `mi-bici-experiment/`, donde están `requirements.txt` y el paquete
+Python. El Dockerfile usa Python 3.14-slim, instala `libgomp1` para LightGBM, preinstala todas las dependencias
+durante la construcción (`RUN pip install --no-cache-dir -r requirements.txt`) y expone el puerto 8000.
+Al estar preempaquetadas en la imagen, el contenedor arranca de forma inmediata y reproducible en cualquier entorno.
+
+### 3. Levantar el contenedor
+
+```bash
+docker run --detach --rm \
+  --name mibici-api \
+  --publish 127.0.0.1:8000:8000 \
+  --add-host host.docker.internal:host-gateway \
+  --env MLFLOW_TRACKING_URI=http://host.docker.internal:5000 \
+  --env MIBICI_MODEL_ALIAS=champion \
+  mibici-api:local
+```
+
+La API queda publicada en `http://127.0.0.1:8000`. Para seguir el arranque:
+
+```bash
+docker logs --follow mibici-api
+```
+
+Espera a que Uvicorn indique que escucha en `0.0.0.0:8000`; `Ctrl+C` deja de mostrar los logs y
+mantiene el contenedor ejecutándose. Si MLflow está en otro servidor, sustituye el valor de
+`MLFLOW_TRACKING_URI` por su dirección accesible desde el contenedor. Si requiere autenticación,
+puedes agregar `--env-file mi-bici-experiment/.env` al comando; el `--env MLFLOW_TRACKING_URI=...`
+explícito debe apuntar a ese mismo servidor y tiene prioridad sobre el archivo.
+
+### 4. Comprobar el estado y consumir la API
+
+```bash
+curl --fail-with-body http://127.0.0.1:8000/health
+```
+
+Respuesta esperada con el alias predeterminado:
+
+```json
+{
+  "status": "ok",
+  "model_uri": "models:/mibici-equipo12-p1-demanda@champion"
+}
+```
+
+`/health` comprueba que la API responde, pero no carga el modelo ni verifica su disponibilidad en
+MLflow. Para probar la inferencia, envía las siete variables de una estación y un día:
+
+```bash
+curl --fail-with-body --request POST http://127.0.0.1:8000/predict \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "trips_lag_1": 12,
+    "trips_lag_7": 9,
+    "trips_roll_mean_7": 10.5,
+    "is_weekend": 0,
+    "origen_id": 42,
+    "dayofweek": 2,
+    "month": 7
+  }'
+```
+
+Ejemplo de respuesta HTTP `200` (el número es ilustrativo y depende del modelo registrado):
+
+```json
+{
+  "prediction": 12.5,
+  "model": "models:/mibici-equipo12-p1-demanda@champion"
+}
+```
+
+`prediction` es la cantidad estimada de viajes diarios de salida y se limita a un mínimo de cero.
+La API recibe las variables ya calculadas; no genera los rezagos a partir de viajes crudos.
+La documentación interactiva está en `http://127.0.0.1:8000/docs`.
+
+### Evidencia de ejecución en contenedor
+
+La siguiente captura muestra la API desplegada en Docker y respondiendo con éxito (`HTTP 200`) a la petición de prueba:
+
+![Evidencia de la API de P1 en Docker](mi-bici-experiment/docs/assets/api_docker_execution.png)
+
+| Situación | Resultado y comprobación |
+|-----------|--------------------------|
+| Arranque del contenedor | Uvicorn inicia de inmediato gracias a las dependencias preinstaladas en la imagen. |
+| Solicitud incompleta, campos extra o valores fuera de rango | HTTP `422`; revisa las siete variables del ejemplo. |
+| MLflow inaccesible, alias inexistente o error al cargar/predecir | HTTP `503`; revisa los logs, la URI de tracking y el registro de P1. |
+| MLflow rechaza `host.docker.internal` | Revisa `--allowed-hosts` en el servidor de tracking. |
+| El modelo usa artefactos con rutas locales del host | Esas rutas no existen dentro del contenedor; el registro debe referenciar artefactos accesibles por el servidor de MLflow o un almacenamiento compartido. |
+
+El modelo se conserva en memoria después de la primera carga. Si reasignas el alias `champion`,
+reinicia el contenedor para cargar la nueva versión:
+
+```bash
+docker restart mibici-api
+```
+
+Para detenerlo:
+
+```bash
+docker stop mibici-api
+```
+
+La opción `--rm` elimina el contenedor al detenerlo; la imagen y los datos del servidor MLflow se
+conservan. Para levantarlo de nuevo, repite el comando `docker run`.
+
+**Nota:** Se está usando inferencia en línea mediante una API REST desplegada en un contenedor Docker, con el modelo gestionado en MLflow Model Registry. Esto se decidio porque permite servir el modelo con poca infraestructura y aprovechar MLflow, que el proyecto ya utiliza. Aunque la API responde en línea, P1 predice demanda diaria y requiere rezagos previamente calculados. Si el operador necesita las predicciones una vez al día para todas las estaciones, un proceso batch podria ser una alternativa adecuada.
+
+
 ## Flujo de trabajo con Git
 
 Se sigue [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow):

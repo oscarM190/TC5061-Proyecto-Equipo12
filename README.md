@@ -543,9 +543,9 @@ docker build -t mibici-api:local \
 ```
 
 El contexto de construcción es `mi-bici-experiment/`, donde están `requirements.txt` y el paquete
-Python. El Dockerfile usa Python 3.14, instala `libgomp1` para LightGBM y expone el puerto 8000.
-**En el Dockerfile actual, las dependencias Python se instalan al iniciar el contenedor**, por lo
-que el arranque requiere acceso a Internet y puede tardar unos minutos.
+Python. El Dockerfile usa Python 3.14-slim, instala `libgomp1` para LightGBM, preinstala todas las dependencias
+durante la construcción (`RUN pip install --no-cache-dir -r requirements.txt`) y expone el puerto 8000.
+Al estar preempaquetadas en la imagen, el contenedor arranca de forma inmediata y reproducible en cualquier entorno.
 
 ### 3. Levantar el contenedor
 
@@ -616,9 +616,15 @@ Ejemplo de respuesta HTTP `200` (el número es ilustrativo y depende del modelo 
 La API recibe las variables ya calculadas; no genera los rezagos a partir de viajes crudos.
 La documentación interactiva está en `http://127.0.0.1:8000/docs`.
 
+### Evidencia de ejecución en contenedor
+
+La siguiente captura muestra la API desplegada en Docker y respondiendo con éxito (`HTTP 200`) a la petición de prueba:
+
+![Evidencia de la API de P1 en Docker](mi-bici-experiment/docs/assets/api_docker_execution.png)
+
 | Situación | Resultado y comprobación |
 |-----------|--------------------------|
-| Dependencias todavía instalándose | Espera el inicio de Uvicorn en `docker logs mibici-api`. |
+| Arranque del contenedor | Uvicorn inicia de inmediato gracias a las dependencias preinstaladas en la imagen. |
 | Solicitud incompleta, campos extra o valores fuera de rango | HTTP `422`; revisa las siete variables del ejemplo. |
 | MLflow inaccesible, alias inexistente o error al cargar/predecir | HTTP `503`; revisa los logs, la URI de tracking y el registro de P1. |
 | MLflow rechaza `host.docker.internal` | Revisa `--allowed-hosts` en el servidor de tracking. |

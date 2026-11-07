@@ -1,0 +1,10 @@
+........................................................................ [ 40%]
+........................................................................ [ 80%]
+..................................                                       [100%]
+=============================== warnings summary ===============================
+tests/test_p3.py::test_entrenar_reproducible_en_mlflow
+  /home/jordan/.mlflow/envs/mlflow-d0cf593ce624c4bd9601aaac35b1414a967b396f/lib/python3.14/site-packages/mlflow/store/tracking/sqlalchemy_store.py:327: SADeprecationWarning: The ``noload`` loader strategy is deprecated and will be removed in a future release.  This option produces incorrect results by returning ``None`` for related items. (deprecated since: 2.1)
+    sqlalchemy.orm.configure_mappers()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+178 passed, 1 warning in 7.48s

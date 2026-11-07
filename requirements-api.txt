@@ -1,0 +1,12 @@
+# Servicio P3: separado del entorno de entrenamiento y de Deepchecks.
+# MLflow 3.17.2 conserva la corrección de seguridad de la actividad 6.
+mlflow==3.17.2
+fastapi==0.159.1
+uvicorn==0.54.0
+pydantic==2.14.1
+numpy==2.5.4
+pandas==3.0.6
+scikit-learn==1.9.1
+scipy==1.18.1
+skops==0.16.0
+certifi==2026.10.19

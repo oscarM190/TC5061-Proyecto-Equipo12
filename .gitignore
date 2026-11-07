@@ -226,3 +226,9 @@ __marimo__/
 .streamlit/secrets.toml
 
 **/mlflow.db
+
+# Actividad 7: modelos descargados del Registry y entorno del servicio.
+/artifacts/
+/.venv-api/
+/evidence/*/container-inspect.json
+/tools/evidence/node_modules/

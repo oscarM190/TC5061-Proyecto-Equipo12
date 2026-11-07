@@ -1,0 +1,42 @@
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            Install the buildx component to build images with BuildKit:
+            https://docs.docker.com/go/buildx/
+
+Sending build context to Docker daemon  95.74kB
+Step 1/12 : FROM python:3.14.7-slim
+ ---> 51dafde81dbd
+Step 2/12 : ENV PYTHONDONTWRITEBYTECODE=1     PYTHONUNBUFFERED=1     PIP_NO_CACHE_DIR=1     MODEL_PATH=/app/artifacts/p3     MLFLOW_ENABLE_TELEMETRY=false     MLFLOW_DISABLE_AGENT_HINT=1     OMP_NUM_THREADS=1     OPENBLAS_NUM_THREADS=1
+ ---> Using cache
+ ---> a8c96c635b40
+Step 3/12 : WORKDIR /app
+ ---> Using cache
+ ---> aeeeeef8e80f
+Step 4/12 : COPY requirements-api.txt ./
+ ---> Using cache
+ ---> ebbf511f90c7
+Step 5/12 : RUN python -m pip install --no-cache-dir -r requirements-api.txt     && useradd --create-home --uid 10001 appuser
+ ---> Using cache
+ ---> 84eb724f7f50
+Step 6/12 : COPY --chown=10001:10001 serving/ ./serving/
+ ---> Using cache
+ ---> 8249eb81c89a
+Step 7/12 : COPY --chown=10001:10001 artifacts/p3/ ./artifacts/p3/
+ ---> Using cache
+ ---> 348d231e4c91
+Step 8/12 : USER 10001:10001
+ ---> Using cache
+ ---> 827667f9c985
+Step 9/12 : RUN python -c "from pathlib import Path; from serving.model import load_bundle; load_bundle(Path('/app/artifacts/p3'))"
+ ---> Using cache
+ ---> a3877b46631d
+Step 10/12 : EXPOSE 8000
+ ---> Using cache
+ ---> 8e066819d210
+Step 11/12 : HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"
+ ---> Using cache
+ ---> c591fd04962a
+Step 12/12 : CMD ["python", "-m", "uvicorn", "serving.app:app", "--host", "0.0.0.0", "--port", "8000"]
+ ---> Using cache
+ ---> f983c6c49669
+Successfully built f983c6c49669
+Successfully tagged mibici-p3:1

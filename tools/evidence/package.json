@@ -1,0 +1,11 @@
+{
+  "name": "mibici-evidencia-api",
+  "private": true,
+  "description": "Herramienta opcional para capturar Swagger UI durante la prueba del contenedor.",
+  "scripts": {
+    "capture": "node capture.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.65.0"
+  }
+}

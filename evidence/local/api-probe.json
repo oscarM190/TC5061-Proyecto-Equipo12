@@ -1,0 +1,59 @@
+{
+  "mode": "ASGI in-process; not a container or TCP server",
+  "request": {
+    "instances": [
+      {
+        "prop_fin_semana": 0.207,
+        "log_viajes_dia": 2.4248027257,
+        "balance": -0.122
+      },
+      {
+        "prop_fin_semana": 0.196,
+        "log_viajes_dia": 3.5667118201,
+        "balance": 0.031
+      },
+      {
+        "prop_fin_semana": 0.328,
+        "log_viajes_dia": 3.4626060098,
+        "balance": -0.068
+      }
+    ]
+  },
+  "predict_status": 200,
+  "response": {
+    "model": {
+      "name": "mibici-equipo12-p3-grupos",
+      "version": "1",
+      "run_id": "3c32c7b78cb64a4eb4eedce691c3f015",
+      "uri": "models:/mibici-equipo12-p3-grupos/1"
+    },
+    "predictions": [
+      0,
+      2,
+      1
+    ]
+  },
+  "invalid_status": 422,
+  "invalid_response": {
+    "detail": [
+      {
+        "loc": [
+          "body",
+          "instances"
+        ],
+        "msg": "List should have at least 1 item after validation, not 0",
+        "type": "too_short"
+      }
+    ]
+  },
+  "health_status": 200,
+  "health": {
+    "status": "ok",
+    "model": {
+      "name": "mibici-equipo12-p3-grupos",
+      "version": "1",
+      "run_id": "3c32c7b78cb64a4eb4eedce691c3f015",
+      "uri": "models:/mibici-equipo12-p3-grupos/1"
+    }
+  }
+}

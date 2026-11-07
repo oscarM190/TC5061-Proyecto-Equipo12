@@ -1,0 +1,18 @@
+INFO:     Started server process [1]
+INFO:     Waiting for application startup.
+2026/11/05 20:54:52 WARNING mlflow.utils.requirements_utils: Detected one or more mismatches between the model's dependencies and the current Python environment:
+ - mlflow (current: 3.17.2, required: mlflow==3.17.0)
+ - numpy (current: 2.5.4, required: numpy==2.5.3)
+ - psutil (current: uninstalled, required: psutil==7.2.2)
+ - pytest (current: uninstalled, required: pytest==9.1.1)
+ - rich (current: uninstalled, required: rich==15.0.0)
+To fix the mismatches, call `mlflow.pyfunc.get_model_dependencies(model_uri)` to fetch the model's environment and install dependencies using the resulting environment file.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     172.17.0.1:47528 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     172.17.0.1:47540 - "POST /predict HTTP/1.1" 200 OK
+INFO:     172.17.0.1:47556 - "POST /predict HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:42414 - "GET /healthz HTTP/1.1" 200 OK
+INFO:     172.17.0.1:36986 - "GET /docs HTTP/1.1" 200 OK
+INFO:     172.17.0.1:36986 - "GET /openapi.json HTTP/1.1" 200 OK
+INFO:     172.17.0.1:36986 - "POST /predict HTTP/1.1" 200 OK

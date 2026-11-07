@@ -1,0 +1,12 @@
+{
+  "mlflow": "3.17.0",
+  "fastapi": "0.159.1",
+  "pydantic": "2.14.1",
+  "uvicorn": "0.54.0",
+  "numpy": "2.5.4",
+  "pandas": "3.0.6",
+  "scikit-learn": "1.9.1",
+  "skops": "0.16.0",
+  "pytest": "9.1.1",
+  "httpx": "0.28.1"
+}

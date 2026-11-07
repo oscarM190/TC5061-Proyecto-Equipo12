@@ -10,6 +10,42 @@ El equipo propone y valida soluciones de Machine Learning para la operación de 
 bicicleta pública del Área Metropolitana de Guadalajara, con datos reproducibles y experimentos
 registrados en MLflow.
 
+## Actividad 7: API REST de P3 en contenedor
+
+El servicio está en [`serving/`](serving/) y se empaqueta con [`Containerfile`](Containerfile).
+Recupera `mibici-equipo12-p3-grupos` desde el Model Registry, resuelve el alias a una versión
+concreta y descarga el pipeline antes de construir la imagen. La API carga ese artefacto una
+sola vez al iniciar; no necesita conectarse a MLflow para cada predicción.
+
+Consulta la [guía completa del servicio](serving/README.md) para configurar el Registry,
+instalar las dependencias, descargar el modelo, construir y ejecutar con Docker o Podman,
+enviar peticiones y generar la captura de evidencia. El [estado de validación local](evidence/README.md)
+distingue las pruebas realizadas de las verificaciones pendientes en un motor de contenedores.
+
+Ejemplo desde la raíz, después de exportar el modelo según la guía:
+
+```bash
+docker build -f Containerfile -t mibici-p3:1 .
+docker run --rm --name mibici-p3 -p 127.0.0.1:8000:8000 mibici-p3:1
+```
+
+En otra terminal:
+
+```bash
+curl -X POST http://127.0.0.1:8000/predict \
+  -H 'Content-Type: application/json' \
+  --data-binary @examples/p3-request.json
+```
+
+El [ejemplo de respuesta](examples/p3-response.json) incluye las etiquetas y el nombre, versión
+y corrida de origen del modelo. Swagger UI está en `http://127.0.0.1:8000/docs`.
+
+**Estrategia:** inferencia síncrona por HTTP para asignar perfiles agregados de estaciones a grupos.
+Se aceptan de 1 a 1000 perfiles por petición. El pipeline conserva su escalado, PCA y K-Means;
+la API no vuelve a entrenarlo. Una imagen por versión facilita repetir el despliegue y volver
+a una versión anterior. P3 apoya análisis de planeación; no predice disponibilidad instantánea
+de bicicletas a partir de viajes individuales.
+
 ## Preguntas del proyecto
 
 | # | Pregunta | Tarea | Formulación | Usuario |

@@ -1,0 +1,20 @@
+{
+  "model": {
+    "name": "mibici-equipo12-p3-grupos",
+    "version": "1",
+    "run_id": "3c32c7b78cb64a4eb4eedce691c3f015",
+    "uri": "models:/mibici-equipo12-p3-grupos/1"
+  },
+  "requested_alias": null,
+  "exported_at": "2026-11-05T20:37:47.554991+00:00",
+  "sha256": {
+    "MLmodel": "cc1b934222949022db2a64fcd843f1a964f8531579c3db317834a7a97fdf26db",
+    "conda.yaml": "a33ae63a7261106b9ae2fac9e9f50c66eada33c5e97849a956919065c69ee9c9",
+    "input_example.json": "fbd2bd04105f341abeae66ac03de2a04526bf14bcba79fb196a43b3b4068028d",
+    "model.skops": "dfb0e946bc5fa030ce5780dd9436ac022b7162ac2bf48ba8751617838dc2e3db",
+    "python_env.yaml": "6c06c11f301fb0a2e34a6146cbc378b954ad58ab501403d5128668fd816263ad",
+    "registered_model_meta": "dc351a44b340acfa57e7606631e49a11579018be9bba06bb390ad6354c72fce4",
+    "requirements.txt": "5ce7349d31c214dcacce00cc657a592d599862ceceda1a2aa9f864558bbfef0d",
+    "serving_input_example.json": "31c5f1321f60dda583be9ac510b040b6a246b0f15afc9dcce173fd6a73de467e"
+  }
+}

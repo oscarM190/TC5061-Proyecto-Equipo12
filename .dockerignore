@@ -1,0 +1,10 @@
+**
+!Containerfile
+!requirements-api.txt
+!serving/
+!serving/*.py
+!artifacts/
+!artifacts/p3/
+!artifacts/p3/**
+**/__pycache__/
+**/.env

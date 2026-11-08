@@ -25,11 +25,15 @@ def create_app(model_path: Path | None = None) -> FastAPI:
         yield
         del application.state.model
 
+    root_path = os.getenv("FASTAPI_ROOT_PATH", "/p3")
+
     application = FastAPI(
         title="MiBici · Agrupación de estaciones (P3)",
         description="Asigna perfiles de estaciones a los grupos del modelo registrado en MLflow.",
         version="1.0.0",
         lifespan=lifespan,
+        root_path=root_path,
+        servers=[{"url": root_path, "description": "Production"}],
     )
 
     @application.exception_handler(RequestValidationError)

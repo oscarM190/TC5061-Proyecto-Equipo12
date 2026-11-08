@@ -1,0 +1,1308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MiBici MLOps · Predicción de Demanda en Producción</title>
+
+  <!-- Tipografía: Inter y JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS (Tema Claro Exclusivo) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#EFF6FF',
+              100: '#DBEAFE',
+              500: '#3B82F6',
+              600: '#2563EB',
+              700: '#1D4ED8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- FontAwesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Chart.js 4 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Vue 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
+  <style>
+    [v-cloak] { display: none; }
+
+    /* Sistema de Diseño SaaS: Modo Claro Exclusivo (WCAG 2.2 AA) */
+    :root {
+      --bg-page: #F6F8FC;               /* Fondo general neutral */
+      --bg-surface: #FFFFFF;            /* Paneles y tarjetas */
+      --bg-surface-subtle: #F8FAFC;     /* Superficies auxiliares */
+      --bg-surface-muted: #F1F5F9;      /* Fondos de inputs / código */
+      --border-color: #E2E8F0;          /* Líneas estructurales */
+      --border-strong: #CBD5E1;         /* Bordes de controles interactivos */
+      --text-primary: #172338;          /* Texto principal (Ratio 15.3:1) */
+      --text-secondary: #475569;        /* Texto secundario (Ratio 6.8:1) */
+      --text-muted: #64748B;            /* Metadatos (Ratio 4.6:1) */
+      --primary: #2563EB;               /* Azul de acción sólido */
+      --primary-hover: #1D4ED8;
+      --primary-subtle: #EFF6FF;
+      --success: #059669;               /* Verde esmeralda */
+      --success-subtle: #ECFDF5;
+      --warning: #D97706;               /* Ámbar de alerta */
+      --warning-subtle: #FFFBEB;
+      --danger: #DC2626;                /* Rojo error */
+      --danger-subtle: #FEF2F2;
+      --chart-grid: #E2E8F0;
+      --chart-text: #64748B;
+    }
+
+    body {
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+    }
+
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+  </style>
+</head>
+<body class="min-h-screen font-sans antialiased text-[14px]">
+  <div id="app" v-cloak class="min-h-screen flex flex-col lg:flex-row">
+
+    <!-- ================= BARRA LATERAL ================= -->
+    <aside :class="sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'" class="w-full bg-[var(--bg-surface)] border-b lg:border-b-0 lg:border-r border-[var(--border-color)] flex flex-col justify-between shrink-0 z-40 transition-all duration-200">
+      <div>
+        <!-- Cabecera del Sidebar (Sin badge PROD) -->
+        <div class="h-16 flex items-center justify-between px-4 border-b border-[var(--border-color)]">
+          <div class="flex items-center space-x-2.5 overflow-hidden">
+            <div class="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm shrink-0">
+              <i class="fa-solid fa-bicycle text-base"></i>
+            </div>
+            <div v-show="!sidebarCollapsed" class="whitespace-nowrap transition-opacity">
+              <span class="font-bold text-[15px] tracking-tight text-[var(--text-primary)]">MiBici MLOps</span>
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-1.5">
+            <button @click="sidebarCollapsed = !sidebarCollapsed" class="hidden lg:flex w-7 h-7 rounded items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-slate-100 transition" :title="sidebarCollapsed ? 'Expandir barra lateral' : 'Colapsar barra lateral'">
+              <i class="fa-solid" :class="sidebarCollapsed ? 'fa-angles-right text-xs' : 'fa-angles-left text-xs'"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Navegación de Módulos -->
+        <div class="p-3 space-y-1" role="tablist">
+          <div v-show="!sidebarCollapsed" class="px-3 pt-3 pb-1 text-xs font-semibold text-[var(--text-muted)] tracking-wider">
+            Modelo en producción
+          </div>
+
+          <button @click="activeTab = 'predict'" :class="activeTab === 'predict' ? 'bg-blue-50 text-blue-700 font-semibold border-l-2 border-blue-600' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)] hover:text-[var(--text-primary)]'" class="w-full flex items-center px-3 py-2.5 rounded-r-md text-[14px] transition text-left space-x-3" role="tab" :aria-selected="activeTab === 'predict'" :title="sidebarCollapsed ? 'Predicción de demanda' : ''">
+            <i class="fa-solid fa-chart-line w-5 text-center text-base"></i>
+            <span v-show="!sidebarCollapsed" class="truncate">Predicción de demanda</span>
+          </button>
+
+          <div v-show="!sidebarCollapsed" class="px-3 pt-4 pb-1 text-xs font-semibold text-[var(--text-muted)] tracking-wider">
+            Monitoreo y pruebas
+          </div>
+
+          <button @click="activeTab = 'history'" :class="activeTab === 'history' ? 'bg-blue-50 text-blue-700 font-semibold border-l-2 border-blue-600' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)] hover:text-[var(--text-primary)]'" class="w-full flex items-center px-3 py-2.5 rounded-r-md text-[14px] transition text-left space-x-3" role="tab" :aria-selected="activeTab === 'history'" :title="sidebarCollapsed ? 'Historial de inferencia' : ''">
+            <i class="fa-solid fa-clock-rotate-left w-5 text-center text-base"></i>
+            <div v-show="!sidebarCollapsed" class="flex-1 flex justify-between items-center overflow-hidden">
+              <span class="truncate">Historial de inferencia</span>
+              <span v-if="requestLogs.length" class="text-xs bg-slate-200 px-1.5 py-0.5 rounded-full font-mono tabular-nums">{{ requestLogs.length }}</span>
+            </div>
+          </button>
+
+          <button @click="activeTab = 'tests'" :class="activeTab === 'tests' ? 'bg-blue-50 text-blue-700 font-semibold border-l-2 border-blue-600' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)] hover:text-[var(--text-primary)]'" class="w-full flex items-center px-3 py-2.5 rounded-r-md text-[14px] transition text-left space-x-3" role="tab" :aria-selected="activeTab === 'tests'" :title="sidebarCollapsed ? 'Suite de pruebas REST' : ''">
+            <i class="fa-solid fa-vial-circle-check w-5 text-center text-base"></i>
+            <span v-show="!sidebarCollapsed" class="truncate">Suite de pruebas REST</span>
+          </button>
+
+          <button @click="activeTab = 'health'" :class="activeTab === 'health' ? 'bg-blue-50 text-blue-700 font-semibold border-l-2 border-blue-600' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)] hover:text-[var(--text-primary)]'" class="w-full flex items-center px-3 py-2.5 rounded-r-md text-[14px] transition text-left space-x-3" role="tab" :aria-selected="activeTab === 'health'" :title="sidebarCollapsed ? 'Salud del contenedor' : ''">
+            <i class="fa-solid fa-heart-pulse w-5 text-center text-base"></i>
+            <span v-show="!sidebarCollapsed" class="truncate">Salud del contenedor</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Pie del Sidebar: Estado del Modelo -->
+      <div class="p-3.5 border-t border-[var(--border-color)] bg-[var(--bg-surface-subtle)] space-y-3">
+        <div v-show="!sidebarCollapsed">
+          <div class="text-[12px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">
+            Estado del servicio
+          </div>
+          <div class="space-y-1.5 text-xs">
+            <div class="flex items-center justify-between">
+              <span class="text-[var(--text-secondary)]">API Demanda REST</span>
+              <span class="inline-flex items-center space-x-1.5 font-medium" :class="apiStatus === 'ok' ? 'text-emerald-600' : 'text-rose-600'">
+                <span class="w-2 h-2 rounded-full" :class="apiStatus === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'"></span>
+                <span>{{ apiStatus === 'ok' ? 'En línea' : 'Desconectado' }}</span>
+              </span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-[var(--text-secondary)]">MLflow Registry</span>
+              <span class="inline-flex items-center space-x-1.5 text-emerald-600 font-medium">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>@champion</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div v-show="sidebarCollapsed" class="flex flex-col items-center space-y-2 py-1">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500" title="API en línea"></span>
+          <span class="text-[10px] font-mono font-semibold text-[var(--text-muted)]">v1.0</span>
+        </div>
+
+        <div v-show="!sidebarCollapsed" class="pt-2 border-t border-[var(--border-color)] flex items-center justify-between text-[11px] text-[var(--text-muted)]">
+          <span>Actividad 7 · MLOps</span>
+          <a href="/api/docs" target="_blank" class="hover:text-blue-600 transition font-medium" title="Documentación interactiva OpenAPI (Swagger)">Swagger Docs &rarr;</a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ================= CONTENEDOR PRINCIPAL ================= -->
+    <div class="flex-1 flex flex-col min-w-0">
+
+      <!-- TOPBAR SUPERIOR -->
+      <header class="h-16 bg-[var(--bg-surface)] border-b border-[var(--border-color)] px-6 lg:px-8 flex items-center justify-between shrink-0">
+        <nav class="flex items-center space-x-2 text-xs font-medium" aria-label="Breadcrumb">
+          <span class="text-[var(--text-muted)]">MiBici MLOps</span>
+          <span class="text-[var(--text-muted)]">/</span>
+          <span class="text-[var(--text-secondary)]">Inferencia</span>
+          <span class="text-[var(--text-muted)]">/</span>
+          <span class="text-[14px] font-semibold text-[var(--text-primary)]">{{ currentTabLabel }}</span>
+        </nav>
+
+        <div class="flex items-center space-x-3">
+          <button @click="checkHealth" :disabled="checkingHealth" class="h-9 px-3 bg-[var(--bg-surface-subtle)] hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xs font-medium rounded-lg border border-[var(--border-color)] transition flex items-center space-x-2" title="Latencia de verificación de salud de la API (Ping HTTP a contenedor FastAPI)">
+            <i class="fa-solid fa-rotate" :class="{'fa-spin': checkingHealth}"></i>
+            <span>Latencia API:</span>
+            <span class="tabular-nums font-mono font-semibold text-[var(--text-primary)]">{{ apiLatency ? `${apiLatency} ms` : 'Verificando...' }}</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- ÁREA DE CONTENIDO -->
+      <main class="flex-1 w-full max-w-[1440px] mx-auto px-6 lg:px-10 py-6 lg:py-8 space-y-8">
+
+        <!-- ================================================================= -->
+        <!-- SECCIÓN 1: PREDICCIÓN DE DEMANDA (MODELO ÚNICO P1)                 -->
+        <!-- ================================================================= -->
+        <div v-show="activeTab === 'predict'" class="space-y-8">
+
+          <!-- Encabezado de Página (Punto 04: Descripción orientada al usuario) -->
+          <div class="border-b border-[var(--border-color)] pb-4">
+            <h1 class="text-2xl lg:text-3xl font-bold tracking-tight text-[var(--text-primary)]">
+              Predicción de demanda de viajes MiBici
+            </h1>
+            <p class="text-[15px] text-[var(--text-secondary)] mt-1.5 leading-relaxed">
+              Estima la demanda diaria de viajes por estación para apoyar la planificación y el rebalanceo de bicicletas.
+            </p>
+          </div>
+
+          <!-- ================= ETAPA 1 & 2: CONFIGURACIÓN Y RESULTADO FOCAL ================= -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+            <!-- 1. CONFIGURACIÓN: FORMULARIO DE VARIABLES (7 cols) -->
+            <div class="lg:col-span-7 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-6 lg:p-7 shadow-sm space-y-5">
+
+              <!-- Cabecera de Formulario con Presets Concisos (Punto 05) -->
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[var(--border-color)]">
+                <div>
+                  <h2 class="text-base font-bold text-[var(--text-primary)]">Variables de inferencia</h2>
+                  <p class="text-xs text-[var(--text-secondary)] mt-0.5">Parámetros requeridos por el modelo de predicción</p>
+                </div>
+
+                <div class="flex items-center space-x-1.5">
+                  <span class="text-xs font-semibold text-[var(--text-muted)] mr-1">Perfiles:</span>
+                  <button @click="applyPreset('laboral')" :class="activePreset === 'laboral' ? 'bg-blue-50 text-blue-700 border-blue-500 font-semibold shadow-xs' : 'bg-[var(--bg-surface-subtle)] text-[var(--text-secondary)] hover:bg-[var(--border-color)] border-[var(--border-color)]'" class="px-2.5 py-1 text-xs rounded-md border transition" title="Pico laboral · Martes · Octubre">
+                    Pico laboral
+                  </button>
+                  <button @click="applyPreset('recreativo')" :class="activePreset === 'recreativo' ? 'bg-blue-50 text-blue-700 border-blue-500 font-semibold shadow-xs' : 'bg-[var(--bg-surface-subtle)] text-[var(--text-secondary)] hover:bg-[var(--border-color)] border-[var(--border-color)]'" class="px-2.5 py-1 text-xs rounded-md border transition" title="Fin de semana · Domingo · Octubre">
+                    Fin de semana
+                  </button>
+                  <button @click="applyPreset('lluvioso')" :class="activePreset === 'lluvioso' ? 'bg-blue-50 text-blue-700 border-blue-500 font-semibold shadow-xs' : 'bg-[var(--bg-surface-subtle)] text-[var(--text-secondary)] hover:bg-[var(--border-color)] border-[var(--border-color)]'" class="px-2.5 py-1 text-xs rounded-md border transition" title="Día bajo · Lunes · Agosto">
+                    Día bajo
+                  </button>
+                </div>
+              </div>
+
+              <!-- Fila 1: Estación y Mes -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label for="p1-origen" class="block text-[14px] font-medium text-[var(--text-primary)] mb-1.5">
+                    Estación de origen <span class="text-xs font-mono text-[var(--text-muted)] font-normal">(origen_id)</span>
+                  </label>
+                  <select id="p1-origen" v-model.number="form.origen_id" @change="onParamChange" class="w-full h-10 px-3 bg-[var(--bg-surface-subtle)] border border-[var(--border-strong)] rounded-lg text-[14px] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    <option :value="42">42 · Av. Chapultepec / Vallarta</option>
+                    <option :value="10">10 · Plaza Universidad (Centro Histórico)</option>
+                    <option :value="65">65 · Glorieta Colón (Américas)</option>
+                    <option :value="120">120 · San Juan de Dios (Línea 2)</option>
+                    <option :value="214">214 · Ciudad Judicial / Periférico</option>
+                    <option :value="88">88 · Parque Revolución (Parque Rojo)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label for="p1-month" class="block text-[14px] font-medium text-[var(--text-primary)] mb-1.5">
+                    Mes del año <span class="text-xs font-mono text-[var(--text-muted)] font-normal">(month: 1-12)</span>
+                  </label>
+                  <select id="p1-month" v-model.number="form.month" @change="onParamChange" class="w-full h-10 px-3 bg-[var(--bg-surface-subtle)] border border-[var(--border-strong)] rounded-lg text-[14px] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    <option :value="1">Enero (1)</option>
+                    <option :value="2">Febrero (2)</option>
+                    <option :value="3">Marzo (3)</option>
+                    <option :value="4">Abril (4)</option>
+                    <option :value="5">Mayo (5)</option>
+                    <option :value="6">Junio (6)</option>
+                    <option :value="7">Julio (7)</option>
+                    <option :value="8">Agosto (8)</option>
+                    <option :value="9">Septiembre (9)</option>
+                    <option :value="10">Octubre (10)</option>
+                    <option :value="11">Noviembre (11)</option>
+                    <option :value="12">Diciembre (12)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Fila 2: Día de la semana y Derivación Automática de is_weekend -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label for="p1-dayofweek" class="block text-[14px] font-medium text-[var(--text-primary)] mb-1.5">
+                    Día de la semana <span class="text-xs font-mono text-[var(--text-muted)] font-normal">(dayofweek: 0-6)</span>
+                  </label>
+                  <select id="p1-dayofweek" v-model.number="form.dayofweek" @change="onDayChange" class="w-full h-10 px-3 bg-[var(--bg-surface-subtle)] border border-[var(--border-strong)] rounded-lg text-[14px] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    <option :value="0">Lunes (0)</option>
+                    <option :value="1">Martes (1)</option>
+                    <option :value="2">Miércoles (2)</option>
+                    <option :value="3">Jueves (3)</option>
+                    <option :value="4">Viernes (4)</option>
+                    <option :value="5">Sábado (5)</option>
+                    <option :value="6">Domingo (6)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-[14px] font-medium text-[var(--text-primary)] mb-1.5">
+                    Clasificación de jornada <span class="text-xs font-mono text-[var(--text-muted)] font-normal">(is_weekend derivado)</span>
+                  </label>
+                  <div class="h-10 px-3.5 bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] rounded-lg flex items-center justify-between text-xs">
+                    <span class="font-medium text-[var(--text-secondary)]">
+                      {{ form.is_weekend === 1 ? 'Fin de semana (Sábado/Domingo)' : 'Jornada laboral ordinaria (Lunes a Viernes)' }}
+                    </span>
+                    <span class="px-2 py-0.5 rounded text-[11px] font-mono font-semibold" :class="form.is_weekend === 1 ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'">
+                      is_weekend: {{ form.is_weekend }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Fila 3: Inercia Temporal de Viajes (Punto 01: Controles Compactos de 1 sola indicación de rango) -->
+              <div class="space-y-3 pt-1">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-[14px] font-bold text-[var(--text-primary)]">Inercia temporal de viajes</h3>
+                  <span class="text-xs text-[var(--text-muted)]">Valores históricos observados</span>
+                </div>
+
+                <!-- trips_lag_1 compacto -->
+                <div class="p-3 rounded-lg bg-[var(--bg-surface-subtle)] border border-slate-200 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <div class="text-[14px] font-medium text-[var(--text-primary)]">Viajes registrados ayer</div>
+                      <div class="text-xs text-[var(--text-muted)] font-mono">trips_lag_1 · Rango: 0–200 viajes</div>
+                    </div>
+                    <div class="flex items-center space-x-1">
+                      <button @click="form.trips_lag_1 = Math.max(0, form.trips_lag_1 - 1); onParamChange()" class="w-8 h-8 bg-white hover:bg-slate-100 active:bg-slate-200 text-[var(--text-primary)] rounded border border-slate-300 text-sm font-bold transition flex items-center justify-center shadow-2xs" aria-label="Disminuir viajes ayer">-</button>
+                      <input type="number" step="1.0" min="0" max="200" v-model.number="form.trips_lag_1" @change="onParamChange" class="w-20 h-8 text-center font-mono text-[14px] font-semibold bg-white border border-slate-300 rounded text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums">
+                      <button @click="form.trips_lag_1 = Math.min(200, form.trips_lag_1 + 1); onParamChange()" class="w-8 h-8 bg-white hover:bg-slate-100 active:bg-slate-200 text-[var(--text-primary)] rounded border border-slate-300 text-sm font-bold transition flex items-center justify-center shadow-2xs" aria-label="Aumentar viajes ayer">+</button>
+                    </div>
+                  </div>
+                  <input type="range" min="0" max="200" step="0.5" v-model.number="form.trips_lag_1" @input="onParamChange" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600" aria-label="Slider viajes registrados ayer">
+                </div>
+
+                <!-- trips_lag_7 compacto -->
+                <div class="p-3 rounded-lg bg-[var(--bg-surface-subtle)] border border-slate-200 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <div class="text-[14px] font-medium text-[var(--text-primary)]">Viajes hace 7 días</div>
+                      <div class="text-xs text-[var(--text-muted)] font-mono">trips_lag_7 · Rango: 0–200 viajes</div>
+                    </div>
+                    <div class="flex items-center space-x-1">
+                      <button @click="form.trips_lag_7 = Math.max(0, form.trips_lag_7 - 1); onParamChange()" class="w-8 h-8 bg-white hover:bg-slate-100 active:bg-slate-200 text-[var(--text-primary)] rounded border border-slate-300 text-sm font-bold transition flex items-center justify-center shadow-2xs" aria-label="Disminuir viajes hace 7 días">-</button>
+                      <input type="number" step="1.0" min="0" max="200" v-model.number="form.trips_lag_7" @change="onParamChange" class="w-20 h-8 text-center font-mono text-[14px] font-semibold bg-white border border-slate-300 rounded text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums">
+                      <button @click="form.trips_lag_7 = Math.min(200, form.trips_lag_7 + 1); onParamChange()" class="w-8 h-8 bg-white hover:bg-slate-100 active:bg-slate-200 text-[var(--text-primary)] rounded border border-slate-300 text-sm font-bold transition flex items-center justify-center shadow-2xs" aria-label="Aumentar viajes hace 7 días">+</button>
+                    </div>
+                  </div>
+                  <input type="range" min="0" max="200" step="0.5" v-model.number="form.trips_lag_7" @input="onParamChange" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600" aria-label="Slider viajes hace 7 días">
+                </div>
+
+                <!-- trips_roll_mean_7 compacto -->
+                <div class="p-3 rounded-lg bg-[var(--bg-surface-subtle)] border border-slate-200 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <div class="text-[14px] font-medium text-[var(--text-primary)]">Media móvil de 7 días</div>
+                      <div class="text-xs text-[var(--text-muted)] font-mono">trips_roll_mean_7 · Rango: 0–200 · paso 0.5</div>
+                    </div>
+                    <div class="flex items-center space-x-1">
+                      <button @click="form.trips_roll_mean_7 = Math.max(0, form.trips_roll_mean_7 - 0.5); onParamChange()" class="w-8 h-8 bg-white hover:bg-slate-100 active:bg-slate-200 text-[var(--text-primary)] rounded border border-slate-300 text-sm font-bold transition flex items-center justify-center shadow-2xs" aria-label="Disminuir media móvil">-</button>
+                      <input type="number" step="0.5" min="0" max="200" v-model.number="form.trips_roll_mean_7" @change="onParamChange" class="w-20 h-8 text-center font-mono text-[14px] font-semibold bg-white border border-slate-300 rounded text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums">
+                      <button @click="form.trips_roll_mean_7 = Math.min(200, form.trips_roll_mean_7 + 0.5); onParamChange()" class="w-8 h-8 bg-white hover:bg-slate-100 active:bg-slate-200 text-[var(--text-primary)] rounded border border-slate-300 text-sm font-bold transition flex items-center justify-center shadow-2xs" aria-label="Aumentar media móvil">+</button>
+                    </div>
+                  </div>
+                  <input type="range" min="0" max="200" step="0.5" v-model.number="form.trips_roll_mean_7" @input="onParamChange" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600" aria-label="Slider media móvil">
+                </div>
+              </div>
+
+              <!-- Botón Primario de Inferencia -->
+              <button @click="executePredict" :disabled="loading" class="w-full h-11 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-slate-400 text-white font-semibold text-[14px] rounded-lg shadow-sm transition flex items-center justify-center space-x-2">
+                <i class="fa-solid" :class="loading ? 'fa-spinner fa-spin' : 'fa-play'"></i>
+                <span>{{ loading ? 'Ejecutando inferencia en servidor...' : (predictionStatus === 'stale' ? 'Recalcular predicción con nuevos parámetros' : 'Calcular predicción de demanda') }}</span>
+              </button>
+            </div>
+
+            <!-- 2. RESULTADO: TARJETA FOCAL + TARJETA DE SNAPSHOT (Puntos 02, 03 y 06) (5 cols) -->
+            <div class="lg:col-span-5 space-y-4">
+
+              <!-- Tarjeta Focal de Predicción -->
+              <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-6 shadow-sm space-y-4" aria-live="polite">
+
+                <!-- Máquina de Estados -->
+                <div class="flex items-center justify-between pb-3 border-b border-[var(--border-color)]">
+                  <span class="text-[14px] font-bold text-[var(--text-primary)]">Demanda estimada</span>
+
+                  <span v-if="predictionStatus === 'loading'" class="px-2.5 py-1 rounded text-xs font-semibold tabular-nums inline-flex items-center bg-blue-50 text-blue-700 border border-blue-200">
+                    <i class="fa-solid fa-spinner fa-spin mr-1.5 text-blue-600"></i>
+                    Calculando...
+                  </span>
+
+                  <span v-else-if="predictionStatus === 'stale'" class="px-2.5 py-1 rounded text-xs font-semibold tabular-nums inline-flex items-center bg-amber-50 text-amber-800 border border-amber-300" title="Los parámetros del formulario cambiaron; pulsa recalcular">
+                    <i class="fa-solid fa-triangle-exclamation mr-1.5 text-amber-600"></i>
+                    Pendiente de recalcular
+                  </span>
+
+                  <span v-else-if="predictionStatus === 'fresh'" class="px-2.5 py-1 rounded text-xs font-semibold tabular-nums inline-flex items-center bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <i class="fa-solid fa-circle-check mr-1.5 text-emerald-600"></i>
+                    Actualizado
+                  </span>
+
+                  <span v-else-if="predictionStatus === 'error'" class="px-2.5 py-1 rounded text-xs font-semibold tabular-nums inline-flex items-center bg-rose-50 text-rose-700 border border-rose-200">
+                    <i class="fa-solid fa-circle-xmark mr-1.5 text-rose-600"></i>
+                    Error de inferencia
+                  </span>
+                </div>
+
+                <!-- Advertencia si parámetros cambiaron -->
+                <div v-if="predictionStatus === 'stale'" class="p-3 bg-amber-50/80 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-center justify-between">
+                  <span>Los parámetros cambiaron tras la última inferencia.</span>
+                  <button @click="executePredict" class="font-bold underline hover:text-amber-950 ml-2">Recalcular</button>
+                </div>
+
+                <!-- Cifra Principal 52-60px con unidad clara -->
+                <div class="py-1">
+                  <div v-if="predictionStatus === 'loading'" class="space-y-3">
+                    <div class="h-12 w-48 bg-slate-200 rounded-lg animate-pulse"></div>
+                    <div class="h-4 w-64 bg-slate-100 rounded animate-pulse"></div>
+                  </div>
+                  <div v-else-if="resultSuccess && resultData" class="space-y-1">
+                    <div class="flex items-baseline space-x-3">
+                      <span class="text-5xl lg:text-6xl font-extrabold tracking-tight text-[var(--text-primary)] font-mono tabular-nums" :class="predictionStatus === 'stale' ? 'opacity-50' : 'opacity-100'">
+                        {{ resultData.prediction.toFixed(1) }}
+                      </span>
+                      <span class="text-base lg:text-lg font-semibold text-[var(--text-secondary)]">viajes/día</span>
+                    </div>
+
+                    <div class="text-xs text-[var(--text-muted)] font-medium">
+                      {{ stationNames[form.origen_id] || `Estación #${form.origen_id}` }}
+                    </div>
+                  </div>
+                  <div v-else-if="!resultSuccess && errorMessage" class="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-mono space-y-1">
+                    <div class="font-bold font-sans flex items-center">
+                      <i class="fa-solid fa-triangle-exclamation mr-1.5"></i> Fallo de inferencia (HTTP {{ statusCode }})
+                    </div>
+                    <p>{{ errorMessage }}</p>
+                    <button @click="executePredict" class="mt-2 px-2.5 py-1 bg-rose-600 text-white rounded text-xs font-sans font-medium hover:bg-rose-700 transition">
+                      Reintentar inferencia
+                    </button>
+                  </div>
+                  <div v-else class="text-slate-400 text-xs py-4">
+                    Presiona "Calcular predicción de demanda" para invocar el modelo.
+                  </div>
+                </div>
+
+                <!-- Recomendación Operativa Logística -->
+                <div v-if="resultSuccess && resultData" class="p-3.5 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] text-xs space-y-1.5">
+                  <div class="font-bold text-[var(--text-primary)] text-[13px] flex items-center">
+                    <i class="fa-solid fa-truck-ramp-box text-blue-600 mr-2"></i>
+                    Recomendación operativa de rebalanceo
+                  </div>
+                  <p v-if="resultData.prediction >= 60" class="text-[var(--text-secondary)] leading-relaxed">
+                    <strong class="text-[var(--text-primary)]">Demanda estimada alta según el umbral configurado (≥ 60 viajes/día).</strong>
+                    Evaluar la necesidad de redistribución de bicicletas considerando disponibilidad física en estación, capacidad de anclajes y flujo esperado.
+                  </p>
+                  <p v-else-if="resultData.prediction >= 25" class="text-[var(--text-secondary)] leading-relaxed">
+                    <strong class="text-[var(--text-primary)]">Demanda en rango nominal estándar.</strong>
+                    Monitoreo regular de muelles libres durante la ruta de patrullaje habitual, sin requerir intervención urgente en la estación.
+                  </p>
+                  <p v-else class="text-[var(--text-secondary)] leading-relaxed">
+                    <strong class="text-[var(--text-primary)]">Demanda estimada baja según el umbral.</strong>
+                    Monitorear la acumulación de bicicletas antes de coordinar rebalanceo hacia nodos con mayor demanda observada.
+                  </p>
+                </div>
+
+                <!-- Punto 03 y 06: Jerarquía de Dos Niveles en Metadatos -->
+                <div class="pt-3 border-t border-[var(--border-color)] space-y-2">
+                  <!-- Nivel 1: Información Principal Directa -->
+                  <div class="grid grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <span class="text-[var(--text-muted)] block text-[11px]">Modelo</span>
+                      <span class="font-mono font-medium text-[var(--text-primary)]">P1 · v1 Champion</span>
+                    </div>
+                    <div>
+                      <span class="text-[var(--text-muted)] block text-[11px]">Tiempo de inferencia</span>
+                      <span class="font-mono font-semibold text-[var(--text-primary)] tabular-nums">{{ responseTime ? `${responseTime} ms` : '—' }}</span>
+                    </div>
+                    <div>
+                      <span class="text-[var(--text-muted)] block text-[11px]">Perfil temporal</span>
+                      <span class="font-medium text-[var(--text-primary)]">{{ targetPeriodText }}</span>
+                    </div>
+                  </div>
+
+                  <!-- Nivel 2: Detalles Técnicos Discretos -->
+                  <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-[var(--text-muted)] font-mono">
+                    <span>Detalles técnicos · HTTP {{ statusCode || 200 }} · LinearRegression</span>
+                    <span>{{ lastExecutionTimestamp ? `Ejecutado: ${lastExecutionTimestamp}` : 'Listo' }}</span>
+                  </div>
+                </div>
+
+              </div>
+
+              <!-- Punto 02: Tarjeta Pequeña de Snapshot / Resumen de Parámetros de la Inferencia Vigente -->
+              <div v-if="resultSuccess && resultData && lastSnapshot" class="bg-[var(--bg-surface)] border border-slate-200 rounded-xl p-4 shadow-sm space-y-2.5">
+                <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <h3 class="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
+                    Parámetros aplicados en esta inferencia
+                  </h3>
+                  <span class="text-[11px] font-mono text-[var(--text-muted)]">Snapshot activo</span>
+                </div>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  <div class="flex justify-between py-0.5 border-b border-slate-50">
+                    <span class="text-[var(--text-secondary)]">Estación:</span>
+                    <span class="font-mono font-semibold text-[var(--text-primary)]">#{{ lastSnapshot.origen_id }}</span>
+                  </div>
+                  <div class="flex justify-between py-0.5 border-b border-slate-50">
+                    <span class="text-[var(--text-secondary)]">Jornada:</span>
+                    <span class="font-medium text-[var(--text-primary)]">{{ monthNames[lastSnapshot.month] }} · {{ dayNames[lastSnapshot.dayofweek] }}</span>
+                  </div>
+                  <div class="flex justify-between py-0.5 border-b border-slate-50">
+                    <span class="text-[var(--text-secondary)]">Ayer (lag 1):</span>
+                    <span class="font-mono font-semibold text-[var(--text-primary)]">{{ lastSnapshot.trips_lag_1 }}</span>
+                  </div>
+                  <div class="flex justify-between py-0.5 border-b border-slate-50">
+                    <span class="text-[var(--text-secondary)]">Hace 7 días:</span>
+                    <span class="font-mono font-semibold text-[var(--text-primary)]">{{ lastSnapshot.trips_lag_7 }}</span>
+                  </div>
+                  <div class="col-span-2 flex justify-between pt-1 text-xs">
+                    <span class="text-[var(--text-secondary)]">Media móvil 7 días:</span>
+                    <span class="font-mono font-semibold text-[var(--text-primary)]">{{ lastSnapshot.trips_roll_mean_7 }} viajes</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+
+          <!-- ================= ETAPA 3: ANÁLISIS Y EVOLUCIÓN DE LA DEMANDA ================= -->
+          <div class="space-y-4 pt-2">
+            <div>
+              <h2 class="text-lg font-bold text-[var(--text-primary)]">Análisis y evolución de la demanda</h2>
+              <p class="text-xs text-[var(--text-secondary)] mt-0.5">Contraste entre observaciones históricas, estadísticas calculadas y proyecciones discretas</p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+              <!-- Gráfico 1: Comparación Histórica vs Estadística vs Predicción (6 cols) -->
+              <div class="lg:col-span-6 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-6 shadow-sm space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="text-[14px] font-bold text-[var(--text-primary)]">
+                      Histórico observado vs. Estadística vs. Predicción
+                    </h3>
+                    <p class="text-xs text-[var(--text-muted)]">Distinción entre mediciones reales, media móvil calculada y resultado inferido</p>
+                  </div>
+                  <span class="text-xs font-mono text-[var(--text-muted)]">viajes/día</span>
+                </div>
+                <div class="h-64 relative">
+                  <canvas id="historicalChart"></canvas>
+                </div>
+
+                <!-- Leyenda de 3 Categorías Semánticas -->
+                <div class="flex flex-wrap items-center justify-center gap-4 text-xs text-[var(--text-secondary)] pt-3 border-t border-[var(--border-color)]">
+                  <div class="flex items-center space-x-1.5">
+                    <span class="w-3 h-3 rounded bg-slate-400"></span>
+                    <span>Observación real (hace 7d, ayer)</span>
+                  </div>
+                  <div class="flex items-center space-x-1.5">
+                    <span class="w-3 h-3 rounded bg-slate-600"></span>
+                    <span class="font-medium">Estadística calculada (Media 7d)</span>
+                  </div>
+                  <div class="flex items-center space-x-1.5">
+                    <span class="w-3 h-3 rounded bg-blue-600"></span>
+                    <span class="font-bold text-blue-700">Estimación inferida (Modelo P1)</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Gráfico 2: Proyección Semanal Discreta (Linear) (6 cols) -->
+              <div class="lg:col-span-6 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-6 shadow-sm space-y-3">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="text-[14px] font-bold text-[var(--text-primary)]">
+                      Proyección estimada de la semana (Escenarios diarios discretos)
+                    </h3>
+                    <p class="text-xs text-[var(--text-muted)]">Puntos diarios conectados linealmente sin interpolación artificial</p>
+                  </div>
+                  <span class="text-xs font-mono text-[var(--text-muted)]">Estación #{{ form.origen_id }}</span>
+                </div>
+                <div class="h-64 relative">
+                  <canvas id="weeklyChart"></canvas>
+                </div>
+                <div class="flex items-center justify-between text-xs text-[var(--text-secondary)] pt-3 border-t border-[var(--border-color)]">
+                  <span>Lunes a Viernes: Régimen laboral</span>
+                  <span class="font-medium text-blue-600">Representación discreta (type: linear)</span>
+                  <span>Sábado y Domingo: Régimen fin de semana</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+
+          <!-- ================= ETAPA 4: INTEGRACIÓN API Y HERRAMIENTAS TÉCNICAS ================= -->
+          <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl shadow-sm overflow-hidden">
+            <button @click="showDevPanel = !showDevPanel" class="w-full px-6 py-4 flex items-center justify-between text-left hover:bg-[var(--bg-surface-subtle)] transition">
+              <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-code text-blue-600"></i>
+                <div>
+                  <h3 class="text-[14px] font-bold text-[var(--text-primary)]">Integración API para desarrolladores</h3>
+                  <p class="text-xs text-[var(--text-muted)]">Comandos cURL, SDK en Python, payloads JSON y prueba técnica HTTP 422</p>
+                </div>
+              </div>
+              <div class="flex items-center space-x-2 text-xs text-[var(--text-secondary)]">
+                <span>{{ showDevPanel ? 'Ocultar panel' : 'Mostrar detalles de integración' }}</span>
+                <i class="fa-solid" :class="showDevPanel ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+              </div>
+            </button>
+
+            <div v-show="showDevPanel" class="p-6 border-t border-[var(--border-color)] space-y-5 bg-[var(--bg-surface-subtle)]">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex space-x-2 border-b border-[var(--border-color)]">
+                  <button @click="codeSnippetType = 'curl'" :class="codeSnippetType === 'curl' ? 'text-blue-600 border-b-2 border-blue-600 font-semibold' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'" class="px-3 py-1.5 text-xs transition">
+                    cURL (HTTP)
+                  </button>
+                  <button @click="codeSnippetType = 'python'" :class="codeSnippetType === 'python' ? 'text-blue-600 border-b-2 border-blue-600 font-semibold' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'" class="px-3 py-1.5 text-xs transition">
+                    Python (requests)
+                  </button>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                  <button @click="testValidationError422" :disabled="loading" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 transition flex items-center space-x-1.5" title="Prueba técnica para comprobar el código de estado 422 de Pydantic">
+                    <i class="fa-solid fa-bug"></i>
+                    <span>Probar validación HTTP 422</span>
+                  </button>
+
+                  <button @click="copyCodeSnippet" class="px-3 py-1.5 text-xs bg-[var(--bg-surface)] hover:bg-[var(--border-color)] border border-[var(--border-color)] rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition flex items-center space-x-1.5">
+                    <i class="fa-solid" :class="codeCopied ? 'fa-check text-emerald-600' : 'fa-copy'"></i>
+                    <span>{{ codeCopied ? 'Copiado al portapapeles' : 'Copiar código' }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="relative bg-slate-900 rounded-lg p-4 font-mono text-xs text-slate-200 overflow-x-auto shadow-inner">
+                <pre class="leading-relaxed whitespace-pre-wrap">{{ currentCodeSnippet }}</pre>
+              </div>
+
+              <div class="flex items-center justify-between text-xs text-[var(--text-muted)] pt-2 border-t border-[var(--border-color)]">
+                <span>Endpoint de producción: <code class="text-blue-600 font-semibold">POST https://161.132.54.170/api/predict</code></span>
+                <a href="/api/docs" target="_blank" class="hover:underline flex items-center space-x-1 text-blue-600">
+                  <span>Abrir documentación interactiva OpenAPI (Swagger)</span>
+                  <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+                </a>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+
+        <!-- ================================================================= -->
+        <!-- SECCIÓN 2: HISTORIAL DE INFERENCIA                                -->
+        <!-- ================================================================= -->
+        <div v-show="activeTab === 'history'" class="space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--border-color)] pb-4">
+            <div>
+              <h1 class="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Historial de peticiones</h1>
+              <p class="text-sm text-[var(--text-secondary)] mt-1">Registro cronológico de inferencias y llamadas a la API en esta sesión</p>
+            </div>
+            <button @click="requestLogs = []" class="px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] rounded-lg transition flex items-center space-x-1.5">
+              <i class="fa-solid fa-trash-can"></i>
+              <span>Limpiar historial</span>
+            </button>
+          </div>
+
+          <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl overflow-hidden shadow-sm">
+            <div v-if="requestLogs.length === 0" class="p-12 text-center text-xs text-[var(--text-muted)]">
+              No hay peticiones registradas aún. Ejecuta inferencias desde el formulario para visualizarlas aquí.
+            </div>
+            <div v-else class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-[var(--bg-surface-subtle)] text-[var(--text-muted)] uppercase tracking-wider border-b border-[var(--border-color)] font-mono">
+                  <tr>
+                    <th class="px-4 py-3 font-medium">Hora</th>
+                    <th class="px-4 py-3 font-medium">Método</th>
+                    <th class="px-4 py-3 font-medium">Endpoint</th>
+                    <th class="px-4 py-3 font-medium">Código</th>
+                    <th class="px-4 py-3 font-medium">Latencia</th>
+                    <th class="px-4 py-3 font-medium">Payload</th>
+                    <th class="px-4 py-3 font-medium">Respuesta</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[var(--border-color)] font-mono">
+                  <tr v-for="(log, i) in requestLogs" :key="i" class="hover:bg-[var(--bg-surface-subtle)] transition">
+                    <td class="px-4 py-3 text-[var(--text-muted)] whitespace-nowrap">{{ log.time }}</td>
+                    <td class="px-4 py-3 font-semibold text-blue-600">{{ log.method }}</td>
+                    <td class="px-4 py-3 text-[var(--text-primary)] whitespace-nowrap">{{ log.endpoint }}</td>
+                    <td class="px-4 py-3">
+                      <span class="px-2 py-0.5 rounded text-[11px] font-semibold" :class="log.status >= 200 && log.status < 300 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'">
+                        {{ log.status }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3 text-[var(--text-secondary)] tabular-nums">{{ log.latency }} ms</td>
+                    <td class="px-4 py-3 text-[var(--text-muted)] max-w-xs truncate" :title="log.payload">{{ log.payload }}</td>
+                    <td class="px-4 py-3 text-[var(--text-primary)] font-semibold">{{ log.response }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+
+        <!-- ================================================================= -->
+        <!-- SECCIÓN 3: SUITE DE PRUEBAS REST AUTOMATIZADAS                    -->
+        <!-- ================================================================= -->
+        <div v-show="activeTab === 'tests'" class="space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--border-color)] pb-4">
+            <div>
+              <h1 class="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Suite de pruebas REST</h1>
+              <p class="text-sm text-[var(--text-secondary)] mt-1">Verificación automática de esquemas Pydantic, endpoints HTTP y tiempos de respuesta de la API</p>
+            </div>
+            <button @click="runTestSuite" :disabled="runningTests" class="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-400 text-white font-medium text-xs rounded-lg shadow-sm transition flex items-center space-x-2">
+              <i class="fa-solid" :class="runningTests ? 'fa-spinner fa-spin' : 'fa-play'"></i>
+              <span>{{ runningTests ? 'Ejecutando suite...' : 'Ejecutar suite completa' }}</span>
+            </button>
+          </div>
+
+          <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl overflow-hidden shadow-sm">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-[var(--bg-surface-subtle)] text-[var(--text-muted)] uppercase tracking-wider border-b border-[var(--border-color)] font-mono">
+                <tr>
+                  <th class="px-4 py-3 font-medium">#</th>
+                  <th class="px-4 py-3 font-medium">Caso de prueba</th>
+                  <th class="px-4 py-3 font-medium">Endpoint</th>
+                  <th class="px-4 py-3 font-medium">Esperado</th>
+                  <th class="px-4 py-3 font-medium">Obtenido</th>
+                  <th class="px-4 py-3 font-medium">Latencia</th>
+                  <th class="px-4 py-3 font-medium">Dictamen</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-[var(--border-color)] font-mono">
+                <tr v-for="(t, i) in testCases" :key="i" class="hover:bg-[var(--bg-surface-subtle)] transition">
+                  <td class="px-4 py-3 text-[var(--text-muted)]">{{ i + 1 }}</td>
+                  <td class="px-4 py-3 font-sans font-medium text-[var(--text-primary)]">{{ t.name }}</td>
+                  <td class="px-4 py-3 text-blue-600">{{ t.method }} {{ t.path }}</td>
+                  <td class="px-4 py-3 text-[var(--text-muted)]">{{ t.expectedStatus }}</td>
+                  <td class="px-4 py-3">
+                    <span v-if="t.actualStatus" class="tabular-nums font-bold" :class="t.actualStatus === t.expectedStatus ? 'text-emerald-600' : 'text-rose-600'">
+                      {{ t.actualStatus }}
+                    </span>
+                    <span v-else class="text-[var(--text-muted)]">—</span>
+                  </td>
+                  <td class="px-4 py-3 text-[var(--text-secondary)] tabular-nums">
+                    {{ t.duration ? `${t.duration} ms` : '—' }}
+                  </td>
+                  <td class="px-4 py-3 font-sans">
+                    <span v-if="t.state === 'running'" class="text-blue-600 flex items-center">
+                      <i class="fa-solid fa-spinner fa-spin mr-1.5"></i> En curso
+                    </span>
+                    <span v-else-if="t.state === 'pass'" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      APROBADA
+                    </span>
+                    <span v-else-if="t.state === 'fail'" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                      FALLIDA
+                    </span>
+                    <span v-else class="text-[var(--text-muted)] text-[11px]">Pendiente</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+
+        <!-- ================================================================= -->
+        <!-- SECCIÓN 4: SALUD DEL CONTENEDOR Y SERVICIOS                       -->
+        <!-- ================================================================= -->
+        <div v-show="activeTab === 'health'" class="space-y-6">
+          <div class="border-b border-[var(--border-color)] pb-4">
+            <h1 class="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Salud del contenedor y servicios</h1>
+            <p class="text-sm text-[var(--text-secondary)] mt-1">Diagnóstico en tiempo real del contenedor de inferencia, registry y almacenamiento</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <!-- Card 1: Contenedor API Demanda -->
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-5 shadow-sm space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">Contenedor API REST (FastAPI)</span>
+                <span class="w-2.5 h-2.5 rounded-full" :class="apiStatus === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'"></span>
+              </div>
+              <div>
+                <div class="text-lg font-bold text-[var(--text-primary)] font-mono tabular-nums">{{ apiLatency ? `${apiLatency} ms` : 'En línea' }}</div>
+                <div class="text-xs text-[var(--text-muted)] mt-0.5 font-mono">models:/mibici-equipo12-p1-demanda@champion</div>
+              </div>
+              <div class="pt-2 border-t border-[var(--border-color)] flex justify-between text-xs text-[var(--text-secondary)]">
+                <span>Puerto: 8000</span>
+                <span>Ruta: /api/</span>
+              </div>
+            </div>
+
+            <!-- Card 2: MLflow Registry -->
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-5 shadow-sm space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">MLflow Server Registry</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              </div>
+              <div>
+                <div class="text-lg font-bold text-[var(--text-primary)] font-mono">v3.16.1</div>
+                <div class="text-xs text-[var(--text-muted)] mt-0.5 font-mono">tc5061-mlflow (net: tc5061-net)</div>
+              </div>
+              <div class="pt-2 border-t border-[var(--border-color)] flex justify-between text-xs text-[var(--text-secondary)]">
+                <span>Puerto: 5061</span>
+                <span>Backend: SQLite + MinIO</span>
+              </div>
+            </div>
+
+            <!-- Card 3: MinIO S3 Store -->
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-5 shadow-sm space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]">MinIO S3 Artifact Store</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              </div>
+              <div>
+                <div class="text-lg font-bold text-[var(--text-primary)] font-mono">Activo</div>
+                <div class="text-xs text-[var(--text-muted)] mt-0.5 font-mono">tc5061-minio (puerto 5062:9000)</div>
+              </div>
+              <div class="pt-2 border-t border-[var(--border-color)] flex justify-between text-xs text-[var(--text-secondary)]">
+                <span>Bucket: S3</span>
+                <span>SSL: Let's Encrypt</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </main>
+
+    </div>
+
+  </div>
+
+  <!-- Script Aplicación Vue 3 y Adaptadores de Gráficos -->
+  <script>
+    const { createApp, ref, computed, onMounted, nextTick } = Vue;
+
+    createApp({
+      setup() {
+        const activeTab = ref('predict');
+        const activePreset = ref('laboral');
+        const sidebarCollapsed = ref(false);
+        const showDevPanel = ref(false);
+        const codeSnippetType = ref('curl');
+        const codeCopied = ref(false);
+
+        // Nombres de Presets Concisos (Punto 05)
+        const presetNames = {
+          laboral: 'Pico laboral · Martes · Octubre',
+          recreativo: 'Fin de semana · Domingo · Octubre',
+          lluvioso: 'Día bajo · Lunes · Agosto'
+        };
+
+        const stationNames = {
+          42: 'Estación 42 · Av. Chapultepec / Vallarta',
+          10: 'Estación 10 · Plaza Universidad (Centro Histórico)',
+          65: 'Estación 65 · Glorieta Colón (Américas)',
+          120: 'Estación 120 · San Juan de Dios (Línea 2)',
+          214: 'Estación 214 · Ciudad Judicial / Periférico',
+          88: 'Estación 88 · Parque Revolución (Parque Rojo)'
+        };
+
+        const monthNames = ['', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const dayNames = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+        // Salud de API
+        const checkingHealth = ref(false);
+        const apiStatus = ref('pending');
+        const apiLatency = ref(null);
+        const requestLogs = ref([]);
+
+        // Formulario P1 (Regresión de Demanda)
+        const form = ref({
+          origen_id: 42,
+          month: 10,
+          dayofweek: 1, // Martes
+          is_weekend: 0,
+          trips_lag_1: 82.0,
+          trips_lag_7: 78.0,
+          trips_roll_mean_7: 80.5,
+        });
+
+        // Snapshot de los Parámetros con los que se calculó la inferencia vigente (Punto 02)
+        const lastSnapshot = ref(null);
+
+        // Máquina de Estados: 'fresh' | 'stale' | 'loading' | 'error'
+        const predictionStatus = ref('loading');
+        const loading = ref(false);
+        const resultData = ref(null);
+        const resultSuccess = ref(false);
+        const errorMessage = ref(null);
+        const statusCode = ref(null);
+        const responseTime = ref(null);
+        const lastExecutionTimestamp = ref(null);
+
+        let historicalChartInstance = null;
+        let weeklyChartInstance = null;
+
+        // Suite de Pruebas REST para el Modelo P1
+        const runningTests = ref(false);
+        const testCases = ref([
+          { name: 'Healthcheck API Demanda', method: 'GET', path: '/api/health', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle' },
+          { name: 'Inferencia Nominal Estándar (Día laboral)', method: 'POST', path: '/api/predict', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle', body: { trips_lag_1: 82.0, trips_lag_7: 78.0, trips_roll_mean_7: 80.5, is_weekend: 0, origen_id: 42, dayofweek: 1, month: 10 } },
+          { name: 'Inferencia Escenario Fin de Semana', method: 'POST', path: '/api/predict', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle', body: { trips_lag_1: 52.0, trips_lag_7: 48.0, trips_roll_mean_7: 45.0, is_weekend: 1, origen_id: 42, dayofweek: 6, month: 10 } },
+          { name: 'Inferencia Estación Centro (Inercia baja)', method: 'POST', path: '/api/predict', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle', body: { trips_lag_1: 14.0, trips_lag_7: 12.0, trips_roll_mean_7: 15.0, is_weekend: 0, origen_id: 120, dayofweek: 0, month: 8 } },
+          { name: 'Validación Pydantic (Valores Negativos)', method: 'POST', path: '/api/predict', expectedStatus: 422, actualStatus: null, duration: null, state: 'idle', body: { trips_lag_1: -10, trips_lag_7: 15, trips_roll_mean_7: 12.0, is_weekend: 0, origen_id: 42, dayofweek: 1, month: 10 } },
+          { name: 'Validación Pydantic (Mes fuera de rango 1-12)', method: 'POST', path: '/api/predict', expectedStatus: 422, actualStatus: null, duration: null, state: 'idle', body: { trips_lag_1: 20, trips_lag_7: 18, trips_roll_mean_7: 19.0, is_weekend: 0, origen_id: 42, dayofweek: 1, month: 14 } },
+          { name: 'Documentación OpenAPI Swagger', method: 'GET', path: '/api/docs', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle' }
+        ]);
+
+        const currentTabLabel = computed(() => {
+          switch (activeTab.value) {
+            case 'predict': return 'Predicción de demanda';
+            case 'history': return 'Historial de inferencia';
+            case 'tests': return 'Suite de pruebas REST';
+            case 'health': return 'Salud del contenedor';
+            default: return 'Panel principal';
+          }
+        });
+
+        // Punto 06: Precisión Semántica del Perfil Temporal
+        const targetPeriodText = computed(() => {
+          const m = monthNames[form.value.month] || `Mes ${form.value.month}`;
+          const d = dayNames[form.value.dayofweek] || `Día ${form.value.dayofweek}`;
+          const kind = form.value.is_weekend === 1 ? 'recreativo' : 'laboral';
+          return `${m} · ${d} ${kind}`;
+        });
+
+        const onDayChange = () => {
+          form.value.is_weekend = (form.value.dayofweek >= 5) ? 1 : 0;
+          onParamChange();
+        };
+
+        const onParamChange = () => {
+          activePreset.value = null; // Cambia a "Personalizado"
+          if (resultData.value) {
+            predictionStatus.value = 'stale'; // Cambia a "Pendiente de recalcular"
+          }
+          updateHistoricalBarsPreview();
+        };
+
+        const currentCodeSnippet = computed(() => {
+          if (codeSnippetType.value === 'curl') {
+            return `curl -k -X POST https://161.132.54.170/api/predict \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(form.value)}'`;
+          } else {
+            return `import requests
+
+payload = ${JSON.stringify(form.value, null, 2)}
+
+response = requests.post(
+    "https://161.132.54.170/api/predict",
+    json=payload,
+    verify=False
+)
+
+data = response.json()
+print(f"Demanda esperada: {data['prediction']:.1f} viajes/día")`;
+          }
+        });
+
+        const copyCodeSnippet = () => {
+          navigator.clipboard.writeText(currentCodeSnippet.value);
+          codeCopied.value = true;
+          setTimeout(() => codeCopied.value = false, 2000);
+        };
+
+        const applyPreset = (type) => {
+          activePreset.value = type;
+          if (type === 'laboral') {
+            form.value = { origen_id: 42, month: 10, dayofweek: 1, is_weekend: 0, trips_lag_1: 82.0, trips_lag_7: 78.0, trips_roll_mean_7: 80.5 };
+          } else if (type === 'recreativo') {
+            form.value = { origen_id: 42, month: 10, dayofweek: 6, is_weekend: 1, trips_lag_1: 52.0, trips_lag_7: 48.0, trips_roll_mean_7: 45.0 };
+          } else if (type === 'lluvioso') {
+            form.value = { origen_id: 120, month: 8, dayofweek: 0, is_weekend: 0, trips_lag_1: 14.0, trips_lag_7: 12.0, trips_roll_mean_7: 15.0 };
+          }
+          executePredict();
+        };
+
+        const testValidationError422 = async () => {
+          showDevPanel.value = true;
+          loading.value = true;
+          predictionStatus.value = 'loading';
+          errorMessage.value = null;
+          const t0 = performance.now();
+
+          const invalidPayload = { origen_id: 0, month: 14, dayofweek: 8, is_weekend: 0, trips_lag_1: -25.0, trips_lag_7: 10.0, trips_roll_mean_7: 15.0 };
+
+          try {
+            const resp = await fetch('/api/predict', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(invalidPayload)
+            });
+            const t1 = performance.now();
+            statusCode.value = resp.status;
+            responseTime.value = Math.round(t1 - t0);
+            const data = await resp.json();
+
+            resultSuccess.value = false;
+            resultData.value = null;
+            predictionStatus.value = 'error';
+            errorMessage.value = `Respuesta 422 esperada: Validación Pydantic interceptó campos inválidos (${JSON.stringify(data.detail || data)})`;
+            logRequest('POST', '/api/predict', resp.status, responseTime.value, JSON.stringify(invalidPayload), `HTTP ${resp.status} (Validación correcta)`);
+          } catch (err) {
+            resultSuccess.value = false;
+            predictionStatus.value = 'error';
+            errorMessage.value = err.message || 'Error de red';
+          } finally {
+            loading.value = false;
+          }
+        };
+
+        const executePredict = async () => {
+          loading.value = true;
+          predictionStatus.value = 'loading';
+          errorMessage.value = null;
+          const t0 = performance.now();
+
+          try {
+            const resp = await fetch('/api/predict', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(form.value)
+            });
+            const t1 = performance.now();
+            statusCode.value = resp.status;
+            responseTime.value = Math.round(t1 - t0);
+
+            const data = await resp.json();
+            if (resp.ok) {
+              resultSuccess.value = true;
+              resultData.value = data;
+              predictionStatus.value = 'fresh';
+              lastSnapshot.value = { ...form.value }; // Guardar snapshot exacto
+              const now = new Date();
+              lastExecutionTimestamp.value = now.toTimeString().split(' ')[0];
+              logRequest('POST', '/api/predict', resp.status, responseTime.value, JSON.stringify(form.value), `${data.prediction.toFixed(1)} viajes/día`);
+              updateCharts();
+            } else {
+              resultSuccess.value = false;
+              resultData.value = null;
+              predictionStatus.value = 'error';
+              errorMessage.value = data.detail ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : 'Error en la petición';
+              logRequest('POST', '/api/predict', resp.status, responseTime.value, JSON.stringify(form.value), `HTTP ${resp.status}`);
+            }
+          } catch (err) {
+            resultSuccess.value = false;
+            predictionStatus.value = 'error';
+            errorMessage.value = err.message || 'Error de red al conectar con el servidor';
+          } finally {
+            loading.value = false;
+          }
+        };
+
+        const checkHealth = async () => {
+          checkingHealth.value = true;
+          try {
+            const t0 = performance.now();
+            const r1 = await fetch('/api/health');
+            apiLatency.value = Math.round(performance.now() - t0);
+            apiStatus.value = r1.ok ? 'ok' : 'error';
+          } catch {
+            apiStatus.value = 'error';
+          }
+          checkingHealth.value = false;
+        };
+
+        const runTestSuite = async () => {
+          runningTests.value = true;
+          for (const test of testCases.value) {
+            test.state = 'running';
+            const t0 = performance.now();
+            try {
+              const opts = { method: test.method, headers: {} };
+              if (test.body) {
+                opts.headers['Content-Type'] = 'application/json';
+                opts.body = JSON.stringify(test.body);
+              }
+              const resp = await fetch(test.path, opts);
+              test.duration = Math.round(performance.now() - t0);
+              test.actualStatus = resp.status;
+              test.state = (resp.status === test.expectedStatus) ? 'pass' : 'fail';
+            } catch {
+              test.duration = Math.round(performance.now() - t0);
+              test.actualStatus = 0;
+              test.state = 'fail';
+            }
+          }
+          runningTests.value = false;
+        };
+
+        const logRequest = (method, endpoint, status, latency, payload, response) => {
+          const now = new Date();
+          const time = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+          requestLogs.value.unshift({ time, method, endpoint, status, latency, payload, response });
+          if (requestLogs.value.length > 50) requestLogs.value.pop();
+        };
+
+        const initCharts = () => {
+          const ctx1 = document.getElementById('historicalChart');
+          if (ctx1) {
+            historicalChartInstance = new Chart(ctx1, {
+              type: 'bar',
+              data: {
+                labels: ['Hace 7 días (Real)', 'Ayer (Real)', 'Media 7d (Calculada)', 'Predicción (Estimada)'],
+                datasets: [{
+                  data: [
+                    form.value.trips_lag_7,
+                    form.value.trips_lag_1,
+                    form.value.trips_roll_mean_7,
+                    0
+                  ],
+                  backgroundColor: [
+                    '#94A3B8', // Obs. real
+                    '#94A3B8', // Obs. real
+                    '#64748B', // Estadística calculada
+                    '#2563EB'  // Estimación inferida
+                  ],
+                  borderRadius: 6,
+                  barThickness: 38,
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      title: (c) => c[0].label,
+                      label: (c) => {
+                        const idx = c.dataIndex;
+                        let cat = '';
+                        if (idx === 0 || idx === 1) cat = 'Categoría: Observación real individual';
+                        else if (idx === 2) cat = 'Categoría: Estadística calculada (Media móvil)';
+                        else cat = 'Categoría: Estimación inferida por modelo P1';
+                        return [` ${c.parsed.y.toFixed(1)} viajes/día`, ` ${cat}`];
+                      }
+                    }
+                  }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    grid: { color: '#E2E8F0' },
+                    ticks: { color: '#64748B', font: { family: 'Inter', size: 12 } }
+                  },
+                  x: {
+                    grid: { display: false },
+                    ticks: { color: '#64748B', font: { family: 'Inter', size: 12 } }
+                  }
+                }
+              }
+            });
+          }
+
+          const ctx2 = document.getElementById('weeklyChart');
+          if (ctx2) {
+            weeklyChartInstance = new Chart(ctx2, {
+              type: 'line',
+              data: {
+                labels: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
+                datasets: [{
+                  label: 'Demanda estimada',
+                  data: [78, 82, 81, 79, 85, 45, 40],
+                  borderColor: '#2563EB',
+                  backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                  fill: true,
+                  tension: 0, // Lineal estricto sin suavizado
+                  pointRadius: 5,
+                  pointHoverRadius: 7,
+                  pointBackgroundColor: '#2563EB',
+                  borderWidth: 2.5
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      title: (c) => `Escenario diario: ${c[0].label}`,
+                      label: (c) => ` Estimación: ${c.parsed.y.toFixed(1)} viajes/día (Discreto)`
+                    }
+                  }
+                },
+                scales: {
+                  y: {
+                    beginAtZero: true,
+                    grid: { color: '#E2E8F0' },
+                    ticks: { color: '#64748B', font: { family: 'Inter', size: 12 } }
+                  },
+                  x: {
+                    grid: { display: false },
+                    ticks: { color: '#64748B', font: { family: 'Inter', size: 12 } }
+                  }
+                }
+              }
+            });
+          }
+        };
+
+        const updateHistoricalBarsPreview = () => {
+          if (historicalChartInstance) {
+            const pred = resultData.value ? resultData.value.prediction : 0;
+            historicalChartInstance.data.datasets[0].data = [
+              form.value.trips_lag_7,
+              form.value.trips_lag_1,
+              form.value.trips_roll_mean_7,
+              pred
+            ];
+            historicalChartInstance.update();
+          }
+        };
+
+        const updateCharts = () => {
+          if (historicalChartInstance) {
+            const pred = resultData.value ? resultData.value.prediction : 0;
+            historicalChartInstance.data.datasets[0].data = [
+              form.value.trips_lag_7,
+              form.value.trips_lag_1,
+              form.value.trips_roll_mean_7,
+              pred
+            ];
+            historicalChartInstance.update();
+          }
+
+          if (weeklyChartInstance && resultData.value) {
+            const base = resultData.value.prediction;
+            const isWknd = form.value.is_weekend;
+            const wkndFactor = isWknd ? 1.0 : 0.55;
+            const weekdayFactor = isWknd ? 1.4 : 1.0;
+
+            const sim = [
+              Math.max(0, base * 0.95 * weekdayFactor),
+              Math.max(0, base * 1.02 * weekdayFactor),
+              Math.max(0, base * 1.00 * weekdayFactor),
+              Math.max(0, base * 0.98 * weekdayFactor),
+              Math.max(0, base * 1.08 * weekdayFactor),
+              Math.max(0, base * 0.65 * wkndFactor),
+              Math.max(0, base * 0.55 * wkndFactor)
+            ];
+            weeklyChartInstance.data.datasets[0].data = sim;
+            weeklyChartInstance.update();
+          }
+        };
+
+        onMounted(() => {
+          localStorage.removeItem('mibici_theme');
+          document.documentElement.classList.remove('dark');
+          document.documentElement.classList.add('light');
+
+          nextTick(() => {
+            initCharts();
+            checkHealth();
+            executePredict();
+          });
+        });
+
+        return {
+          activeTab,
+          activePreset,
+          presetNames,
+          stationNames,
+          monthNames,
+          dayNames,
+          sidebarCollapsed,
+          showDevPanel,
+          codeSnippetType,
+          codeCopied,
+          currentTabLabel,
+          currentCodeSnippet,
+          targetPeriodText,
+          lastExecutionTimestamp,
+          checkingHealth,
+          apiStatus,
+          apiLatency,
+          requestLogs,
+          form,
+          lastSnapshot,
+          predictionStatus,
+          loading,
+          resultData,
+          resultSuccess,
+          errorMessage,
+          statusCode,
+          responseTime,
+          testCases,
+          runningTests,
+          onDayChange,
+          onParamChange,
+          applyPreset,
+          testValidationError422,
+          executePredict,
+          checkHealth,
+          runTestSuite,
+          copyCodeSnippet
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

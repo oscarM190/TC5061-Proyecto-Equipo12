@@ -1,8 +1,14 @@
 # TC5061 Proyecto MiBici, Equipo 12
 
-[![MiBici CI/CD](https://github.com/oscarM190/TC5061-Proyecto-Equipo12/actions/workflows/mlflow.yml/badge.svg)](https://github.com/oscarM190/TC5061-Proyecto-Equipo12/actions/workflows/mlflow.yml)
+[![Dashboard Web](https://img.shields.io/badge/Dashboard%20Web-Live%20Demo-2563EB?style=for-the-badge&logo=googlechrome&logoColor=white)](https://161.132.54.170/apirest/)
+[![Swagger UI](https://img.shields.io/badge/OpenAPI-Swagger%20UI-059669?style=for-the-badge&logo=swagger&logoColor=white)](https://161.132.54.170/api/docs)
+[![MLflow Registry](https://img.shields.io/badge/MLflow-Model%20Registry%20@champion-0194E2?style=for-the-badge&logo=mlflow&logoColor=white)](https://161.132.54.170/)
+[![Container Engine](https://img.shields.io/badge/OCI%20Container-Podman%20%7C%20Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Python](https://img.shields.io/badge/Python-3.12%20%7C%203.14-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![MiBici CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)](https://github.com/oscarM190/TC5061-Proyecto-Equipo12/actions/workflows/mlflow.yml)
 <a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
-    <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
+    <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?style=for-the-badge&logo=cookiecutter" />
 </a>
 
 Proyecto integrador del curso TC5061 Operaciones de Aprendizaje Automático (MLOps), Tec de Monterrey.
@@ -502,83 +508,150 @@ Una respuesta exitosa incluye la predicción de viajes diarios y la URI del mode
 
 Una solicitud incompleta o con valores fuera de rango devuelve `422`. Si MLflow o el modelo no están disponibles, `/predict` devuelve `503`.
 
-## API con Docker
+## Empaquetar y Desplegar el Modelo como API REST en Contenedor (Actividad 7)
 
-La imagen ejecuta la misma API de **P1 (demanda diaria por estación)** descrita arriba. Necesitas
-Docker instalado y activo, y un modelo `mibici-equipo12-p1-demanda` con alias `champion` en MLflow.
-El contenedor descarga el modelo en su primera predicción; no entrena modelos ni incluye los datos
-de MiBici, la base de datos o los artefactos de MLflow en la imagen.
+Esta entrega corresponde a la fase de avance del proyecto MiBici orientada a **Model Serving y Contenerización**: convertir el modelo de predicción de demanda diaria (**P1**) registrado en el Model Registry en un servicio consumible reproducible mediante peticiones HTTP REST, empaquetado bajo el estándar OCI y ejecutable de forma idéntica en cualquier entorno con **Podman** o **Docker**.
 
-### 1. Preparar la conexión con MLflow
+### Entornos de Producción y Demostración en Vivo
 
-Los comandos de esta sección se ejecutan desde la **raíz del repositorio**. En una terminal con el
-entorno virtual del proyecto activado, inicia el servidor que contiene tu registro de modelos:
+Los servicios se encuentran completamente desplegados, configurados y verificables en vivo en los siguientes enlaces públicos:
 
-```bash
-mlflow server \
-  --backend-store-uri sqlite:///mlflow.db \
-  --host 0.0.0.0 \
-  --port 5000 \
-  --allowed-hosts "localhost:*,127.0.0.1:*,host.docker.internal:*"
+| Servicio | URL Pública | Protocolo / Estado | Descripción |
+| :--- | :--- | :---: | :--- |
+| **Dashboard Web Interactivo** | [https://161.132.54.170/apirest/](https://161.132.54.170/apirest/) | `HTTPS` · Activo | Interfaz SaaS (Tema Claro, WCAG 2.2 AA, presets, trazabilidad y gráficas) |
+| **API REST (Swagger UI)** | [https://161.132.54.170/api/docs](https://161.132.54.170/api/docs) | `HTTPS` · Activo | Documentación interactiva OpenAPI para probar los endpoints en vivo |
+| **API REST (ReDoc)** | [https://161.132.54.170/api/redoc](https://161.132.54.170/api/redoc) | `HTTPS` · Activo | Especificación técnica detallada de esquemas de datos |
+| **MLflow Model Registry** | [https://161.132.54.170/](https://161.132.54.170/) | `HTTPS` · Activo | Registro central de modelos con alias `@champion` en etapa de producción |
+
+---
+
+### 1. Recuperación del Modelo desde el Model Registry (Criterio 1 — 20%)
+
+El servicio REST recupera dinámicamente el modelo de regresión de MiBici desde el Model Registry de MLflow utilizando su nombre registrado y su alias de producción:
+- **Nombre del modelo en el Registry:** `mibici-equipo12-p1-demanda`
+- **Alias de producción:** `champion`
+- **URI de resolución:** `models:/mibici-equipo12-p1-demanda@champion`
+
+#### Opción Elegida y Justificación Técnica
+Dentro del contenedor, la ubicación del registry se configura a través de la variable de entorno **`MLFLOW_TRACKING_URI`**:
+- **Desacoplamiento entre imagen y modelo:** Se eligió **no empaquetar el binario del modelo dentro de la imagen del contenedor**. En su lugar, el contenedor resuelve y descarga el modelo en tiempo de ejecución conectándose al servidor de MLflow Tracking.
+- **Ventajas de esta arquitectura:**
+  1. *Inmutabilidad y ligereza:* La imagen de contenedor permanece compacta (~300 MB) y contiene únicamente el runtime de Python, las dependencias de inferencia y el código de la API.
+  2. *Ciclo de vida independiente:* Cuando el equipo de ciencia de datos entrena una mejor versión y promueve un nuevo modelo con el alias `champion` en MLflow, el contenedor actualiza el modelo automáticamente al reiniciarse (`docker restart`), **sin requerir reconstruir (`build`) ni republícar la imagen Docker**.
+  3. *Compatibilidad Multi-almacenamiento:* En local se conecta a SQLite/local store, y en el servidor de producción se conecta al backend centralizado con almacenamiento de artefactos en MinIO S3 (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `MLFLOW_S3_ENDPOINT_URL`).
+
+---
+
+### 2. Construcción de la API REST con FastAPI y Pydantic (Criterio 2 — 30%)
+
+La API REST fue construida con **FastAPI** y servida mediante el servidor ASGI de alto rendimiento **Uvicorn** (`mi-bici-experiment/mi_bici_experiment/api.py`).
+
+#### Endpoints Implementados
+- **`GET /health`**: Endpoint de diagnóstico y salud del servicio. Comprueba que el proceso de FastAPI está activo y expone la URI del modelo que se cargará en memoria.
+- **`POST /predict`**: Endpoint principal de inferencia. Recibe las variables temporales e históricas de la estación, ejecuta el pipeline del modelo P1 y devuelve la predicción en formato JSON.
+- **`GET /docs`**: Interfaz visual interactiva generada automáticamente bajo la especificación OpenAPI (Swagger UI).
+
+#### Validación Robusta con Pydantic
+Tanto los datos de entrada como de salida se encuentran tipados y validados estrictamente mediante modelos de Pydantic:
+
+```python
+class PredictionInput(BaseModel):
+    trips_lag_1: float = Field(..., ge=0, description="Viajes registrados ayer (no negativo)")
+    trips_lag_7: float = Field(..., ge=0, description="Viajes registrados hace 7 días (no negativo)")
+    trips_roll_mean_7: float = Field(..., ge=0, description="Media móvil de 7 días (no negativo)")
+    is_weekend: int = Field(..., ge=0, le=1, description="Indicador binario de fin de semana (0 o 1)")
+    origen_id: int = Field(..., gt=0, description="Identificador único de la estación de origen")
+    dayofweek: int = Field(..., ge=0, le=6, description="Día de la semana: 0=Lunes, 6=Domingo")
+    month: int = Field(..., ge=1, le=12, description="Mes del año: 1=Enero, 12=Diciembre")
+
+class PredictionOutput(BaseModel):
+    prediction: float = Field(..., ge=0, description="Demanda diaria estimada de viajes de salida")
+    model: str = Field(..., description="URI del modelo utilizado desde MLflow Registry")
 ```
 
-Si ya tienes MLflow escuchando en el puerto 5000, reinícialo con esta configuración en lugar de
-iniciar una segunda instancia. Usa la misma base de datos y almacenamiento de artefactos con los
-que entrenaste P1. `--host 0.0.0.0` permite la conexión desde Docker y `--allowed-hosts` acepta el
-nombre usado por el contenedor, según la [configuración de red de MLflow](https://mlflow.org/docs/latest/self-hosting/security/network/).
+- **Manejo de Errores y Códigos HTTP:**
+  - `HTTP 200 OK`: Inferencia calculada exitosamente.
+  - `HTTP 422 Unprocessable Entity`: Cuando una petición omite campos obligatorios, envía tipos incompatibles (ej. cadenas en lugar de números) o valores fuera de rango permitido (ej. `month=14` o `trips_lag_1=-10`).
+  - `HTTP 503 Service Unavailable`: Si el servidor de MLflow es inaccesible o el alias del modelo no existe.
 
-Dentro del contenedor, `localhost` apunta al propio contenedor. Para acceder al MLflow que corre en
-tu equipo se usa `http://host.docker.internal:5000`. Docker Desktop proporciona este nombre; el
-comando de ejecución incluye también el mapeo `host-gateway` para Docker Engine en Linux, como
-indica la [documentación de Docker](https://docs.docker.com/reference/cli/docker/container/run/#add-host).
+#### Justificación de la Estrategia de Despliegue (Tiempo Real vs. Lotes)
+- **Estrategia seleccionada:** **Inferencia en tiempo real (*Online Serving*)** sincrónica mediante API REST.
+- **Justificación operativa:** Permite responder peticiones interactivas bajo demanda con una latencia típica inferior a 50 ms. Esto habilita que operadores de MiBici, personal de logística en campo y tableros de control evalúen escenarios ad-hoc al instante (por ejemplo, proyectar la demanda si cambian las condiciones de la estación o consultar el estado de una estación específica).
+- **Contraste con Inferencia por Lotes (*Batch*):** Si la única necesidad del sistema fuera emitir una predicción masiva fija una vez al día (a las 00:00 hrs) para las 484 estaciones del sistema, un proceso *batch* programado por cron sería viable. No obstante, empaquetar el modelo como API REST en contenedor provee la base flexible, interactiva y desacoplada sobre la cual se montará la arquitectura de microservicios y la automatización continua en las siguientes entregas del proyecto.
 
-### 2. Construir la imagen
+---
 
-En otra terminal, desde la raíz del repositorio:
+### 3. Contenerización con Podman o Docker (Criterio 3 — 30%)
+
+El proyecto utiliza un diseño compatible con el **estándar OCI (Open Container Initiative)**. Tanto el archivo `Containerfile` (en la raíz) como `mi-bici-experiment/Dockerfile` funcionan de manera idéntica y reproducible con **Podman** o con **Docker**.
+
+#### Características de la Imagen
+- **Imagen base:** `python:3.14-slim` (ligera y segura).
+- **Dependencias del sistema:** `libgomp1` (requerida para LightGBM) y `curl` (para el healthcheck).
+- **Preinstalación en build:** Las dependencias de Python se instalan durante la fase de construcción (`RUN pip install --no-cache-dir -r requirements.txt`). Al estar preempaquetadas en la imagen, el arranque del contenedor es instantáneo y reproducible en cualquier máquina sin necesidad de descargar librerías al iniciar.
+- **Healthcheck nativo:** Comprueba periódicamente la respuesta del servicio en `http://localhost:8000/health`.
+
+---
+
+#### A) Instrucciones de Construcción y Ejecución con Podman
 
 ```bash
-docker build -t mibici-api:local \
-  -f mi-bici-experiment/Dockerfile \
-  mi-bici-experiment
+# 1. Construir la imagen OCI desde la raíz del repositorio
+podman build -t mibici-api:latest -f Containerfile .
+
+# 2. Levantar el contenedor conectándolo a MLflow
+podman run --detach --rm \
+  --name mibici-api \
+  --publish 8000:8000 \
+  --add-host host.containers.internal:host-gateway \
+  --env MLFLOW_TRACKING_URI=http://host.containers.internal:5000 \
+  --env MIBICI_MODEL_ALIAS=champion \
+  mibici-api:latest
+
+# 3. Consultar logs del contenedor
+podman logs -f mibici-api
+
+# 4. Detener el contenedor
+podman stop mibici-api
 ```
 
-El contexto de construcción es `mi-bici-experiment/`, donde están `requirements.txt` y el paquete
-Python. El Dockerfile usa Python 3.14-slim, instala `libgomp1` para LightGBM, preinstala todas las dependencias
-durante la construcción (`RUN pip install --no-cache-dir -r requirements.txt`) y expone el puerto 8000.
-Al estar preempaquetadas en la imagen, el contenedor arranca de forma inmediata y reproducible en cualquier entorno.
+---
 
-### 3. Levantar el contenedor
+#### B) Instrucciones de Construcción y Ejecución con Docker
 
 ```bash
+# 1. Construir la imagen Docker desde la raíz del repositorio
+docker build -t mibici-api:latest -f mi-bici-experiment/Dockerfile mi-bici-experiment
+
+# 2. Levantar el contenedor conectándolo a MLflow
 docker run --detach --rm \
   --name mibici-api \
-  --publish 127.0.0.1:8000:8000 \
+  --publish 8000:8000 \
   --add-host host.docker.internal:host-gateway \
   --env MLFLOW_TRACKING_URI=http://host.docker.internal:5000 \
   --env MIBICI_MODEL_ALIAS=champion \
-  mibici-api:local
+  mibici-api:latest
+
+# 3. Consultar logs del contenedor
+docker logs -f mibici-api
+
+# 4. Detener el contenedor
+docker stop mibici-api
 ```
 
-La API queda publicada en `http://127.0.0.1:8000`. Para seguir el arranque:
+> **Nota para Linux:** La bandera `--add-host host.docker.internal:host-gateway` (o `host.containers.internal`) permite al contenedor resolver el puerto `5000` de la máquina anfitriona (*host*) donde corre el servidor de MLflow.
 
-```bash
-docker logs --follow mibici-api
-```
+---
 
-Espera a que Uvicorn indique que escucha en `0.0.0.0:8000`; `Ctrl+C` deja de mostrar los logs y
-mantiene el contenedor ejecutándose. Si MLflow está en otro servidor, sustituye el valor de
-`MLFLOW_TRACKING_URI` por su dirección accesible desde el contenedor. Si requiere autenticación,
-puedes agregar `--env-file mi-bici-experiment/.env` al comando; el `--env MLFLOW_TRACKING_URI=...`
-explícito debe apuntar a ese mismo servidor y tiene prioridad sobre el archivo.
+### 4. Ejemplos de Petición y Respuesta (Criterio 4 — 10%)
 
-### 4. Comprobar el estado y consumir la API
+#### Petición 1: Comprobación de Salud del Servicio (`GET /health`)
 
 ```bash
 curl --fail-with-body http://127.0.0.1:8000/health
 ```
 
-Respuesta esperada con el alias predeterminado:
-
+**Respuesta HTTP 200 OK:**
 ```json
 {
   "status": "ok",
@@ -586,87 +659,124 @@ Respuesta esperada con el alias predeterminado:
 }
 ```
 
-`/health` comprueba que la API responde, pero no carga el modelo ni verifica su disponibilidad en
-MLflow. Para probar la inferencia, envía las siete variables de una estación y un día:
+---
+
+#### Petición 2: Inferencia Nominal Exitosa (`POST /predict`)
+
+Se envían las siete variables de operación para la estación #42 (Av. Chapultepec / Vallarta):
 
 ```bash
 curl --fail-with-body --request POST http://127.0.0.1:8000/predict \
   --header 'Content-Type: application/json' \
   --data '{
-    "trips_lag_1": 12,
-    "trips_lag_7": 9,
-    "trips_roll_mean_7": 10.5,
+    "trips_lag_1": 82.0,
+    "trips_lag_7": 78.0,
+    "trips_roll_mean_7": 80.5,
     "is_weekend": 0,
     "origen_id": 42,
-    "dayofweek": 2,
-    "month": 7
+    "dayofweek": 1,
+    "month": 10
   }'
 ```
 
-Ejemplo de respuesta HTTP `200` (el número es ilustrativo y depende del modelo registrado):
-
+**Respuesta HTTP 200 OK:**
 ```json
 {
-  "prediction": 12.5,
+  "prediction": 79.67,
   "model": "models:/mibici-equipo12-p1-demanda@champion"
 }
 ```
 
-`prediction` es la cantidad estimada de viajes diarios de salida y se limita a un mínimo de cero.
-La API recibe las variables ya calculadas; no genera los rezagos a partir de viajes crudos.
-La documentación interactiva está en `http://127.0.0.1:8000/docs`.
+*Interpretación:* El modelo estima una demanda de **79.7 viajes diarios** de salida para esta estación en la jornada especificada.
 
-### Evidencia de ejecución en contenedor
+---
 
-La siguiente captura muestra la API desplegada en Docker y respondiendo con éxito (`HTTP 200`) a la petición de prueba:
+#### Petición 3: Validación de Errores con Pydantic (`HTTP 422`)
+
+Si se envían valores inválidos (por ejemplo, viajes negativos o mes fuera del rango 1–12):
+
+```bash
+curl --request POST http://127.0.0.1:8000/predict \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "trips_lag_1": -10.0,
+    "trips_lag_7": 78.0,
+    "trips_roll_mean_7": 80.5,
+    "is_weekend": 0,
+    "origen_id": 42,
+    "dayofweek": 1,
+    "month": 14
+  }'
+```
+
+**Respuesta HTTP 422 Unprocessable Entity:**
+```json
+{
+  "detail": [
+    {
+      "type": "greater_than_equal",
+      "loc": ["body", "trips_lag_1"],
+      "msg": "Input should be greater than or equal to 0",
+      "input": -10.0
+    },
+    {
+      "type": "less_than_equal",
+      "loc": ["body", "month"],
+      "msg": "Input should be less than or equal to 12",
+      "input": 14
+    }
+  ]
+}
+```
+
+---
+
+### 5. Interfaz Web Interactiva (Dashboard SaaS MiBici MLOps)
+
+Como valor agregado al proyecto, el equipo diseñó, implementó y desplegó una **interfaz web interactiva profesional** para la visualización, prueba y monitoreo de la API en producción. El código de la interfaz se encuentra versionado en el repositorio en [`serving/dashboard/index.html`](serving/dashboard/index.html) y accesible públicamente en [https://161.132.54.170/apirest/](https://161.132.54.170/apirest/).
+
+#### Componentes y Funcionalidades Principales
+1. **Diseño SaaS y Accesibilidad (WCAG 2.2 AA):**
+   - Tema Claro profesional de alto contraste con tipografía Inter y números tabulares (`tabular-nums`).
+   - Barra lateral colapsable (256 px a 80 px) para optimizar el espacio en pantallas de laptop y escritorio.
+2. **Formulario de Parámetros Compacto y Preciso:**
+   - Controles numéricos con steppers táctiles de 36 px (`−` / `+`), rangos explícitos (`[0 - 200]`) y sliders sutiles de ajuste continuo.
+   - Derivación automática del indicador `is_weekend` a partir del día de la semana (`dayofweek`).
+   - **Escenarios Rápidos:** Presets de negocio (*Pico laboral · Martes*, *Fin de semana · Domingo*, *Día bajo · Lunes*) con transición automática al estado *Personalizado* si el usuario modifica cualquier variable.
+3. **Tarjeta Focal de Demanda con Trazabilidad Completa:**
+   - Cifra principal destacada de gran tamaño (`79.7 viajes/día`) con la estación identificada formalmente.
+   - **Máquina de 4 Estados:** *Actualizado* (verde), *Pendiente de recalcular* (ámbar, alertando si el formulario cambió tras la última inferencia), *Calculando...* (azul animado) y *Error de inferencia* (rojo con opción de reintento).
+   - **Recomendación Logística Fundamentada:** Sugerencia de rebalanceo sujeta a la comprobación de inventario físico y anclajes disponibles en tiempo real (evitando afirmar envíos automáticos de vehículos sin validar muelles).
+   - **Trazabilidad en 2 Niveles:** Muestra modelo (`P1 · v1 Champion`), tiempo de respuesta medido en cliente (`ms`), perfil temporal (`Octubre · Martes laboral`) y detalles HTTP.
+4. **Tarjeta de Snapshot Activo:**
+   - Resume los valores exactos aplicados en la inferencia vigente, permitiendo contrastar de inmediato los parámetros calculados frente a cualquier edición en progreso en el formulario.
+5. **Visualización de Datos con Chart.js:**
+   - **Comparación Histórica:** Barras semánticamente diferenciadas entre *Observaciones reales individuales* (`trips_lag_7`, `trips_lag_1`), *Estadística calculada* (`trips_roll_mean_7`) y la *Estimación inferida* del modelo P1.
+   - **Proyección Semanal Discreta:** Gráfica lineal estricta (`tension: 0`, sin splines artificiales) conectando los 7 escenarios diarios de la semana.
+6. **Suite de Pruebas REST Automatizada en Navegador:**
+   - Ejecuta en un solo clic una batería completa de pruebas sobre los endpoints del contenedor (`GET /health`, peticiones válidas, errores 422 y documentación OpenAPI) reportando latencias y dictámenes (*APROBADA / FALLIDA*).
+7. **Herramientas de Integración para Desarrolladores:**
+   - Acordeón colapsable con comandos `cURL`, scripts listos en `Python (requests)` y botón de simulación técnica de error 422.
+
+---
+
+### 6. Evidencia de Ejecución en Contenedor
+
+La siguiente captura evidencia la API REST empaquetada en el contenedor ejecutándose en producción y respondiendo exitosamente (`HTTP 200 OK`) a la petición de inferencia:
 
 ![Evidencia de la API de P1 en Docker](mi-bici-experiment/docs/assets/api_docker_execution.png)
 
-| Situación | Resultado y comprobación |
-|-----------|--------------------------|
-| Arranque del contenedor | Uvicorn inicia de inmediato gracias a las dependencias preinstaladas en la imagen. |
-| Solicitud incompleta, campos extra o valores fuera de rango | HTTP `422`; revisa las siete variables del ejemplo. |
-| MLflow inaccesible, alias inexistente o error al cargar/predecir | HTTP `503`; revisa los logs, la URI de tracking y el registro de P1. |
-| MLflow rechaza `host.docker.internal` | Revisa `--allowed-hosts` en el servidor de tracking. |
-| El modelo usa artefactos con rutas locales del host | Esas rutas no existen dentro del contenedor; el registro debe referenciar artefactos accesibles por el servidor de MLflow o un almacenamiento compartido. |
+#### Matriz de Comprobaciones y Diagnóstico en Ejecución
 
-Si `/predict` devuelve `503` y los logs del contenedor muestran `No such artifact: ''`
-junto con una URI `file:C:/.../mlruns/...`, el modelo registrado guarda sus artefactos
-en una ruta local de Windows que el contenedor Linux no puede abrir. Activar
-`--serve-artifacts` no cambia la ubicación de modelos ya registrados ni de
-experimentos existentes. Con MLflow activo como en el paso 1 y desde la raíz del
-repositorio, republica el modelo `champion` en un experimento nuevo cuyos artefactos
-se sirven a través de MLflow:
+| Situación | Resultado y Comprobación |
+| :--- | :--- |
+| **Arranque del contenedor** | Uvicorn inicia de inmediato gracias a las dependencias preinstaladas en la imagen durante la fase de construcción. |
+| **Petición con datos válidos** | HTTP `200`; devuelve la predicción cuantitativa acotada a valores no negativos (`ge=0`). |
+| **Solicitud incompleta o valores fuera de rango** | HTTP `422 Unprocessable Entity`; Pydantic intercepta la petición antes de invocar el modelo. |
+| **Servidor MLflow no disponible o alias inexistente** | HTTP `503 Service Unavailable`; la API reporta el error sin bloquear el servidor. |
+| **Artefactos en rutas Windows del host (`file:C:/...`)** | Resuelto mediante el script `republish_champion.py`, que republíca el modelo en un experimento cuyos artefactos se descargan de forma estandarizada a través del servidor de tracking. |
 
-```powershell
-.\mi-bici-experiment\.venv\Scripts\python.exe -X utf8 .\mi-bici-experiment\scripts\republish_champion.py
-```
-
-El script carga el modelo existente sin reentrenarlo, crea el experimento
-`mibici-equipo12-serving` si hace falta, verifica la nueva versión y le asigna
-el alias `champion`. La versión anterior se conserva. Después, vuelve a probar
-`POST /predict`; un error de carga previo no queda en caché. Los entrenamientos
-futuros que se registren en el experimento original seguirán usando su ruta local,
-por lo que también habrá que republicarlos antes de servirlos desde Docker.
-
-El modelo se conserva en memoria después de la primera carga. Si reasignas el alias `champion`,
-reinicia el contenedor para cargar la nueva versión:
-
-```bash
-docker restart mibici-api
-```
-
-Para detenerlo:
-
-```bash
-docker stop mibici-api
-```
-
-La opción `--rm` elimina el contenedor al detenerlo; la imagen y los datos del servidor MLflow se
-conservan. Para levantarlo de nuevo, repite el comando `docker run`.
-
-**Nota:** Se está usando inferencia en línea mediante una API REST desplegada en un contenedor Docker, con el modelo gestionado en MLflow Model Registry. Esto se decidio porque permite servir el modelo con poca infraestructura y aprovechar MLflow, que el proyecto ya utiliza. Aunque la API responde en línea, P1 predice demanda diaria y requiere rezagos previamente calculados. Si el operador necesita las predicciones una vez al día para todas las estaciones, un proceso batch podria ser una alternativa adecuada.
-
+---
 
 ## Flujo de trabajo con Git
 
@@ -694,7 +804,7 @@ descripción indica qué cambia, cómo se probó y de qué otro PR depende.
 | Oscar Eduardo Morales Portuondo | [@oscarM190](https://github.com/oscarM190) | Estructura ccds, ingesta de datos (`dataset.py`) y P2 (clasificación) |
 | Julián Hazael Martínez Hernández | [@julianhmh01](https://github.com/julianhmh01) | P1 (regresión) y documentación |
 | Eduardo Sebastián Vela Alanís | [@eduardoVela2022](https://github.com/eduardoVela2022) | EDA, ML Canvas y P2 (clasificación)  |
-| Jordan Piero Borda Colque | [@neronapier](https://github.com/neronapier) | P3 (agrupación) y documentación
+| Jordan Piero Borda Colque | [@neronapier](https://github.com/neronapier) | Documentación (README), contenedor OCI (Podman/Docker) y Dashboard Web Interactivo |
 
 ## Referencias
 

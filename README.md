@@ -630,6 +630,25 @@ La siguiente captura muestra la API desplegada en Docker y respondiendo con éxi
 | MLflow rechaza `host.docker.internal` | Revisa `--allowed-hosts` en el servidor de tracking. |
 | El modelo usa artefactos con rutas locales del host | Esas rutas no existen dentro del contenedor; el registro debe referenciar artefactos accesibles por el servidor de MLflow o un almacenamiento compartido. |
 
+Si `/predict` devuelve `503` y los logs del contenedor muestran `No such artifact: ''`
+junto con una URI `file:C:/.../mlruns/...`, el modelo registrado guarda sus artefactos
+en una ruta local de Windows que el contenedor Linux no puede abrir. Activar
+`--serve-artifacts` no cambia la ubicación de modelos ya registrados ni de
+experimentos existentes. Con MLflow activo como en el paso 1 y desde la raíz del
+repositorio, republica el modelo `champion` en un experimento nuevo cuyos artefactos
+se sirven a través de MLflow:
+
+```powershell
+.\mi-bici-experiment\.venv\Scripts\python.exe -X utf8 .\mi-bici-experiment\scripts\republish_champion.py
+```
+
+El script carga el modelo existente sin reentrenarlo, crea el experimento
+`mibici-equipo12-serving` si hace falta, verifica la nueva versión y le asigna
+el alias `champion`. La versión anterior se conserva. Después, vuelve a probar
+`POST /predict`; un error de carga previo no queda en caché. Los entrenamientos
+futuros que se registren en el experimento original seguirán usando su ruta local,
+por lo que también habrá que republicarlos antes de servirlos desde Docker.
+
 El modelo se conserva en memoria después de la primera carga. Si reasignas el alias `champion`,
 reinicia el contenedor para cargar la nueva versión:
 

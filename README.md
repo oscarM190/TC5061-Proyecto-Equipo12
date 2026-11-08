@@ -641,6 +641,25 @@ docker stop mibici-api
 
 > **Nota para Linux:** La bandera `--add-host host.docker.internal:host-gateway` (o `host.containers.internal`) permite al contenedor resolver el puerto `5000` de la máquina anfitriona (*host*) donde corre el servidor de MLflow.
 
+Si `/predict` devuelve `503` y los logs del contenedor muestran `No such artifact: ''`
+junto con una URI `file:C:/.../mlruns/...`, el modelo registrado guarda sus artefactos
+en una ruta local de Windows que el contenedor Linux no puede abrir. Activar
+`--serve-artifacts` no cambia la ubicación de modelos ya registrados ni de
+experimentos existentes. Con MLflow activo como en el paso 1 y desde la raíz del
+repositorio, republica el modelo `champion` en un experimento nuevo cuyos artefactos
+se sirven a través de MLflow:
+
+```powershell
+python -X utf8 .\mi-bici-experiment\scripts\republish_champion.py
+```
+
+El script carga el modelo existente sin reentrenarlo, crea el experimento
+`mibici-equipo12-serving` si hace falta, verifica la nueva versión y le asigna
+el alias `champion`. La versión anterior se conserva. Después, vuelve a probar
+`POST /predict`; un error de carga previo no queda en caché. Los entrenamientos
+futuros que se registren en el experimento original seguirán usando su ruta local,
+por lo que también habrá que republicarlos antes de servirlos desde Docker.
+
 ---
 
 ### 4. Ejemplos de Petición y Respuesta (Criterio 4 — 10%)

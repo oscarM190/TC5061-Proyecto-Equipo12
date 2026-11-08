@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MiBici MLOps · Playground & Dashboard API REST</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            mibici: {
+              primary: '#0ea5e9',
+              accent: '#10b981',
+              dark: '#0f172a'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Vue 3 -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    [v-cloak] { display: none; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-indigo-500 selection:text-white">
+  <div id="app" v-cloak class="min-h-screen flex flex-col">
+
+    <!-- Navbar Superior -->
+    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <i class="fa-solid fa-bicycle text-white text-lg"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="font-bold text-lg tracking-tight text-white">MiBici MLOps</span>
+              <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-full">PRODUCCIÓN</span>
+            </div>
+            <p class="text-xs text-slate-400">API REST Serving & Model Playground · Equipo 12</p>
+          </div>
+        </div>
+
+        <!-- Acciones y Enlaces Externos -->
+        <div class="flex items-center space-x-2 sm:space-x-4">
+          <button @click="checkHealth" :disabled="checkingHealth" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium rounded-lg border border-slate-700 transition flex items-center space-x-1.5">
+            <i class="fa-solid fa-rotate" :class="{'fa-spin': checkingHealth}"></i>
+            <span class="hidden sm:inline">Verificar Salud</span>
+          </button>
+          <a href="https://161.132.54.170/" target="_blank" class="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-medium rounded-lg transition flex items-center space-x-1.5">
+            <i class="fa-solid fa-server"></i>
+            <span class="hidden sm:inline">MLflow UI</span>
+          </a>
+          <a href="https://161.132.54.170/api/docs" target="_blank" class="px-3 py-1.5 bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 border border-sky-500/30 text-xs font-medium rounded-lg transition flex items-center space-x-1.5">
+            <i class="fa-solid fa-book-open"></i>
+            <span class="hidden sm:inline">Swagger P1</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Barra de Estado de Servicios en Vivo -->
+    <div class="bg-slate-900/50 border-b border-slate-800/80 px-4 py-2.5 text-xs">
+      <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-4">
+          <div class="flex items-center space-x-2">
+            <span class="w-2 h-2 rounded-full" :class="p1Status === 'ok' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'"></span>
+            <span class="text-slate-400">API P1 (Demanda):</span>
+            <span class="font-mono text-slate-200 font-medium">{{ p1Status === 'ok' ? 'Operativo (champion)' : 'Verificando...' }}</span>
+            <span v-if="p1Latency" class="text-slate-500 text-[10px]">({{ p1Latency }}ms)</span>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span class="w-2 h-2 rounded-full" :class="p3Status === 'ok' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'"></span>
+            <span class="text-slate-400">API P3 (Clustering):</span>
+            <span class="font-mono text-slate-200 font-medium">{{ p3Status === 'ok' ? 'Operativo (champion)' : 'Verificando...' }}</span>
+            <span v-if="p3Latency" class="text-slate-500 text-[10px]">({{ p3Latency }}ms)</span>
+          </div>
+        </div>
+        <div class="text-slate-400 hidden md:flex items-center space-x-3">
+          <span><i class="fa-brands fa-docker text-sky-400 mr-1"></i> Contenedores OCI</span>
+          <span><i class="fa-solid fa-shield-halved text-emerald-400 mr-1"></i> SSL Let's Encrypt</span>
+          <span><i class="fa-solid fa-bolt text-amber-400 mr-1"></i> Inferencia en Tiempo Real</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navegación por Pestañas -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2 w-full">
+      <nav class="flex space-x-2 border-b border-slate-800 overflow-x-auto">
+        <button @click="activeTab = 'p1'" :class="activeTab === 'p1' ? 'border-sky-500 text-sky-400 bg-sky-500/10' : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-4 py-2.5 border-b-2 font-medium text-sm rounded-t-lg transition flex items-center space-x-2 whitespace-nowrap">
+          <i class="fa-solid fa-chart-line"></i>
+          <span>Modelo P1 · Predicción de Demanda</span>
+        </button>
+        <button @click="activeTab = 'p3'" :class="activeTab === 'p3' ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10' : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-4 py-2.5 border-b-2 font-medium text-sm rounded-t-lg transition flex items-center space-x-2 whitespace-nowrap">
+          <i class="fa-solid fa-network-wired"></i>
+          <span>Modelo P3 · Clustering de Estaciones</span>
+        </button>
+        <button @click="activeTab = 'tests'" :class="activeTab === 'tests' ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10' : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-4 py-2.5 border-b-2 font-medium text-sm rounded-t-lg transition flex items-center space-x-2 whitespace-nowrap">
+          <i class="fa-solid fa-vial-circle-check"></i>
+          <span>Suite de Pruebas Automatizadas</span>
+        </button>
+        <button @click="activeTab = 'logs'" :class="activeTab === 'logs' ? 'border-amber-500 text-amber-400 bg-amber-500/10' : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-4 py-2.5 border-b-2 font-medium text-sm rounded-t-lg transition flex items-center space-x-2 whitespace-nowrap">
+          <i class="fa-solid fa-clock-rotate-left"></i>
+          <span>Historial de Peticiones ({{ requestLogs.length }})</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Contenido Principal -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1">
+
+      <!-- ================= PESTAÑA 1: MODELO P1 DEMANDA ================= -->
+      <div v-show="activeTab === 'p1'" class="space-y-6">
+        <!-- Encabezado de la Pestaña -->
+        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div class="flex items-center space-x-2">
+                <h2 class="text-xl font-bold text-white">Predicción de Demanda Diaria por Estación</h2>
+                <span class="text-xs bg-sky-500/20 text-sky-400 px-2 py-0.5 rounded-full border border-sky-500/30">Regresión · LinearRegression</span>
+              </div>
+              <p class="text-sm text-slate-400 mt-1">
+                Estima el número de salidas diarias en una cicloestación de MiBici según variables de inercia temporal y calendario, asistiendo la logística de rebalanceo de unidades.
+              </p>
+            </div>
+            <!-- Presets Rápidos -->
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-xs text-slate-400 mr-1"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Presets:</span>
+              <button @click="applyP1Preset('laboral')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">
+                ⚡ Pico Laboral
+              </button>
+              <button @click="applyP1Preset('recreativo')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">
+                🌳 Fin de Semana
+              </button>
+              <button @click="applyP1Preset('lluvioso')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">
+                🌧️ Día Bajo
+              </button>
+              <button @click="applyP1Preset('invalido')" class="px-2.5 py-1 text-xs bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 rounded-md border border-rose-800/50 transition">
+                ⚠️ Test Error 422
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Grid: Formulario de Entrada y Panel de Resultados -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+          <!-- Columna Izquierda: Formulario de Entrada (7 cols) -->
+          <div class="lg:col-span-7 bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-5">
+            <h3 class="text-base font-semibold text-white flex items-center">
+              <i class="fa-solid fa-sliders text-sky-400 mr-2"></i> Variables del Modelo MiBici
+            </h3>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <!-- Estación de Origen -->
+              <div>
+                <label class="block text-xs font-medium text-slate-300 mb-1">Estación de Origen (origen_id)</label>
+                <select v-model.number="p1Form.origen_id" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500">
+                  <option :value="42">42 · Av. Chapultepec / Vallarta</option>
+                  <option :value="10">10 · Plaza Universidad (Centro)</option>
+                  <option :value="65">65 · Glorieta Colón (Américas)</option>
+                  <option :value="120">120 · San Juan de Dios (Línea 2)</option>
+                  <option :value="214">214 · Ciudad Judicial / Periférico</option>
+                  <option :value="88">88 · Parque Revolución (Rojo)</option>
+                </select>
+              </div>
+
+              <!-- Mes del Año -->
+              <div>
+                <label class="block text-xs font-medium text-slate-300 mb-1">Mes del Año (month: 1 a 12)</label>
+                <select v-model.number="p1Form.month" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500">
+                  <option :value="1">1 · Enero</option>
+                  <option :value="2">2 · Febrero</option>
+                  <option :value="3">3 · Marzo</option>
+                  <option :value="4">4 · Abril</option>
+                  <option :value="5">5 · Mayo</option>
+                  <option :value="6">6 · Junio</option>
+                  <option :value="7">7 · Julio</option>
+                  <option :value="8">8 · Agosto</option>
+                  <option :value="9">9 · Septiembre</option>
+                  <option :value="10">10 · Octubre</option>
+                  <option :value="11">11 · Noviembre</option>
+                  <option :value="12">12 · Diciembre</option>
+                </select>
+              </div>
+
+              <!-- Día de la Semana -->
+              <div>
+                <label class="block text-xs font-medium text-slate-300 mb-1">Día de la Semana (dayofweek)</label>
+                <select v-model.number="p1Form.dayofweek" @change="onDayChange" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500">
+                  <option :value="0">0 · Lunes (Laboral)</option>
+                  <option :value="1">1 · Martes (Laboral)</option>
+                  <option :value="2">2 · Miércoles (Laboral)</option>
+                  <option :value="3">3 · Jueves (Laboral)</option>
+                  <option :value="4">4 · Viernes (Laboral)</option>
+                  <option :value="5">5 · Sábado (Fin de Semana)</option>
+                  <option :value="6">6 · Domingo (Vía RecreActiva)</option>
+                </select>
+              </div>
+
+              <!-- Indicador Fin de Semana -->
+              <div>
+                <label class="block text-xs font-medium text-slate-300 mb-1">¿Es Fin de Semana? (is_weekend)</label>
+                <div class="flex items-center h-10 px-3 bg-slate-950 border border-slate-700 rounded-lg text-sm">
+                  <span v-if="p1Form.is_weekend === 1" class="text-emerald-400 font-semibold flex items-center">
+                    <i class="fa-solid fa-check-circle mr-1.5"></i> 1 (Sí, fin de semana)
+                  </span>
+                  <span v-else class="text-slate-400 flex items-center">
+                    <i class="fa-solid fa-briefcase mr-1.5"></i> 0 (No, día laboral)
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sliders de Inercia Temporal -->
+            <div class="space-y-4 pt-2 border-t border-slate-800">
+              <!-- trips_lag_1 -->
+              <div>
+                <div class="flex justify-between items-center text-xs mb-1">
+                  <span class="font-medium text-slate-300">Viajes del día anterior (trips_lag_1)</span>
+                  <input type="number" step="0.1" v-model.number="p1Form.trips_lag_1" class="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right font-mono text-xs text-sky-400">
+                </div>
+                <input type="range" min="0" max="150" step="1" v-model.number="p1Form.trips_lag_1" class="w-full accent-sky-500 cursor-pointer">
+                <div class="flex justify-between text-[10px] text-slate-500"><span>0 viajes</span><span>75 viajes</span><span>150 viajes</span></div>
+              </div>
+
+              <!-- trips_lag_7 -->
+              <div>
+                <div class="flex justify-between items-center text-xs mb-1">
+                  <span class="font-medium text-slate-300">Viajes hace 7 días (trips_lag_7)</span>
+                  <input type="number" step="0.1" v-model.number="p1Form.trips_lag_7" class="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right font-mono text-xs text-sky-400">
+                </div>
+                <input type="range" min="0" max="150" step="1" v-model.number="p1Form.trips_lag_7" class="w-full accent-sky-500 cursor-pointer">
+                <div class="flex justify-between text-[10px] text-slate-500"><span>0 viajes</span><span>75 viajes</span><span>150 viajes</span></div>
+              </div>
+
+              <!-- trips_roll_mean_7 -->
+              <div>
+                <div class="flex justify-between items-center text-xs mb-1">
+                  <span class="font-medium text-slate-300">Promedio móvil de 7 días (trips_roll_mean_7)</span>
+                  <input type="number" step="0.1" v-model.number="p1Form.trips_roll_mean_7" class="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right font-mono text-xs text-sky-400">
+                </div>
+                <input type="range" min="0" max="150" step="0.5" v-model.number="p1Form.trips_roll_mean_7" class="w-full accent-sky-500 cursor-pointer">
+                <div class="flex justify-between text-[10px] text-slate-500"><span>0 viajes</span><span>75 viajes</span><span>150 viajes</span></div>
+              </div>
+            </div>
+
+            <!-- Botón de Ejecutar Predicción -->
+            <button @click="executeP1Predict" :disabled="p1Loading" class="w-full py-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 text-white font-medium text-sm rounded-xl shadow-lg shadow-sky-500/20 transition flex items-center justify-center space-x-2">
+              <i class="fa-solid" :class="p1Loading ? 'fa-spinner fa-spin' : 'fa-bolt'"></i>
+              <span>{{ p1Loading ? 'Consultando API en Producción...' : 'Calcular Predicción en Vivo' }}</span>
+            </button>
+          </div>
+
+          <!-- Columna Derecha: Resultado y Métricas de Inferencia (5 cols) -->
+          <div class="lg:col-span-5 space-y-6">
+            <!-- Card de Resultado Principal -->
+            <div class="bg-gradient-to-br from-slate-900 to-slate-900/90 border border-slate-800 rounded-2xl p-6 relative overflow-hidden">
+              <div class="absolute -right-10 -bottom-10 opacity-10 text-9xl text-sky-500 pointer-events-none">
+                <i class="fa-solid fa-bicycle"></i>
+              </div>
+
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Demanda Estimada</span>
+                <span v-if="p1Result || p1Error" class="px-2 py-0.5 rounded text-[10px] font-mono" :class="p1Success ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'">
+                  HTTP {{ p1StatusCode }} · {{ p1ResponseTime }}ms
+                </span>
+              </div>
+
+              <div class="mt-3 mb-2">
+                <div v-if="p1Loading" class="text-4xl font-black text-slate-500 animate-pulse">Calculando...</div>
+                <div v-else-if="p1Success && p1Result" class="flex items-baseline space-x-2">
+                  <span class="text-5xl font-black tracking-tight text-white">{{ p1Result.prediction.toFixed(1) }}</span>
+                  <span class="text-slate-400 font-medium text-sm">viajes diarios</span>
+                </div>
+                <div v-else-if="!p1Success && p1Error" class="text-rose-400 text-xs font-mono bg-rose-950/40 p-3 rounded-lg border border-rose-900/50">
+                  <i class="fa-solid fa-triangle-exclamation mr-1"></i> {{ p1Error }}
+                </div>
+                <div v-else class="text-slate-500 text-sm py-4">
+                  Ajusta los parámetros y presiona <b>Calcular Predicción en Vivo</b>.
+                </div>
+              </div>
+
+              <!-- Recomendación Operativa -->
+              <div v-if="p1Success && p1Result" class="mt-4 pt-4 border-t border-slate-800 text-xs">
+                <div class="font-medium text-slate-300 mb-1 flex items-center">
+                  <i class="fa-solid fa-truck-ramp-box text-amber-400 mr-1.5"></i> Recomendación Logística:
+                </div>
+                <p v-if="p1Result.prediction >= 60" class="text-amber-300/90 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20">
+                  <b>Alta Demanda:</b> Programar arribo de furgoneta de recarga entre 07:00 y 09:00 hrs. Asignar al menos 15 muelles vacíos para recepción en horas de la tarde.
+                </p>
+                <p v-else-if="p1Result.prediction >= 25" class="text-sky-300/90 bg-sky-500/10 p-2 rounded-lg border border-sky-500/20">
+                  <b>Demanda Regular:</b> Estación en rango nominal. Inspección de anclajes rutinaria durante recorrido vespertino.
+                </p>
+                <p v-else class="text-emerald-300/90 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
+                  <b>Baja Demanda:</b> Flujo tranquilo. Estación apta para retiro temporal de unidades excedentes para balancear nodos críticos.
+                </p>
+              </div>
+
+              <!-- Metadata del Modelo -->
+              <div v-if="p1Result" class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+                <span>Modelo Registrado:</span>
+                <span class="font-mono text-slate-300">{{ p1Result.model || 'models:/mibici-equipo12-p1-demanda@champion' }}</span>
+              </div>
+            </div>
+
+            <!-- Gráfico Comparativo de Inercia vs Predicción -->
+            <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center">
+                  <i class="fa-solid fa-chart-column text-sky-400 mr-1.5"></i> Inercia vs Predicción
+                </h4>
+                <span class="text-[10px] text-slate-500">Actualización en vivo</span>
+              </div>
+              <div class="h-44">
+                <canvas id="p1Chart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gráfico de Proyección Semanal Estimada y Snippets de Código -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div class="lg:col-span-7 bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h4 class="text-sm font-semibold text-white flex items-center">
+                <i class="fa-solid fa-chart-area text-indigo-400 mr-2"></i> Proyección Estimada de la Semana
+              </h4>
+              <span class="text-xs text-slate-400">Variación por día para la estación {{ p1Form.origen_id }}</span>
+            </div>
+            <div class="h-52">
+              <canvas id="p1WeeklyChart"></canvas>
+            </div>
+          </div>
+
+          <div class="lg:col-span-5 bg-slate-900/70 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                  <i class="fa-solid fa-terminal text-sky-400 mr-1"></i> Comando cURL Equivalente
+                </span>
+                <button @click="copyP1Curl" class="text-xs text-sky-400 hover:text-sky-300 transition flex items-center space-x-1">
+                  <i class="fa-regular fa-copy"></i>
+                  <span>{{ p1Copied ? '¡Copiado!' : 'Copiar' }}</span>
+                </button>
+              </div>
+              <pre class="bg-slate-950 p-3 rounded-lg text-[11px] font-mono text-slate-300 overflow-x-auto border border-slate-800 leading-relaxed">{{ p1CurlCommand }}</pre>
+            </div>
+            <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+              <span>Endpoint: <code class="text-slate-300 font-mono">POST /api/predict</code></span>
+              <a href="https://161.132.54.170/api/docs" target="_blank" class="text-sky-400 hover:underline">Ver Swagger OpenAPI &rarr;</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ================= PESTAÑA 2: MODELO P3 CLUSTERING ================= -->
+      <div v-show="activeTab === 'p3'" class="space-y-6">
+        <!-- Encabezado P3 -->
+        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div class="flex items-center space-x-2">
+                <h2 class="text-xl font-bold text-white">Agrupación y Perfiles de Estaciones (P3)</h2>
+                <span class="text-xs bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full border border-indigo-500/30">Clustering · Pipeline (PCA + KMeans)</span>
+              </div>
+              <p class="text-sm text-slate-400 mt-1">
+                Clasifica las estaciones en grupos según el patrón de uso (proporción fin de semana, volumen logarítmico y balance neto de viajes).
+              </p>
+            </div>
+            <!-- Presets P3 -->
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-xs text-slate-400 mr-1"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Presets:</span>
+              <button @click="applyP3Preset('corporativo')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">
+                🏢 Corporativo / Centro
+              </button>
+              <button @click="applyP3Preset('recreativo')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">
+                🎪 Recreativo (Fin de Sem.)
+              </button>
+              <button @click="applyP3Preset('residencial')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">
+                🏘️ Residencial Emisora
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Grid Contenido P3 -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <!-- Formulario P3 (6 cols) -->
+          <div class="lg:col-span-6 bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-5">
+            <h3 class="text-base font-semibold text-white flex items-center">
+              <i class="fa-solid fa-sliders text-indigo-400 mr-2"></i> Perfil Operacional de la Estación
+            </h3>
+
+            <!-- prop_fin_semana -->
+            <div>
+              <div class="flex justify-between items-center text-xs mb-1">
+                <span class="font-medium text-slate-300">Proporción en Fin de Semana (prop_fin_semana)</span>
+                <span class="font-mono text-indigo-400 text-xs font-semibold">{{ (p3Form.prop_fin_semana * 100).toFixed(1) }}%</span>
+              </div>
+              <input type="range" min="0.0" max="1.0" step="0.01" v-model.number="p3Form.prop_fin_semana" class="w-full accent-indigo-500 cursor-pointer">
+              <div class="flex justify-between text-[10px] text-slate-500">
+                <span>0% (Solo Laboral)</span>
+                <span>28.5% (Uniforme)</span>
+                <span>100% (Solo Sáb/Dom)</span>
+              </div>
+            </div>
+
+            <!-- log_viajes_dia -->
+            <div>
+              <div class="flex justify-between items-center text-xs mb-1">
+                <span class="font-medium text-slate-300">Volumen diario logarítmico (log_viajes_dia)</span>
+                <span class="font-mono text-indigo-400 text-xs font-semibold">{{ p3Form.log_viajes_dia.toFixed(2) }} (~{{ Math.round(Math.expm1(p3Form.log_viajes_dia)) }} viajes/día)</span>
+              </div>
+              <input type="range" min="0.5" max="5.5" step="0.05" v-model.number="p3Form.log_viajes_dia" class="w-full accent-indigo-500 cursor-pointer">
+              <div class="flex justify-between text-[10px] text-slate-500">
+                <span>0.5 (~1 viaje)</span>
+                <span>3.0 (~19 viajes)</span>
+                <span>5.5 (~240 viajes)</span>
+              </div>
+            </div>
+
+            <!-- balance -->
+            <div>
+              <div class="flex justify-between items-center text-xs mb-1">
+                <span class="font-medium text-slate-300">Balance Neto de Flujo (balance = [llegadas - salidas] / total)</span>
+                <span class="font-mono text-xs font-semibold" :class="p3Form.balance >= 0 ? 'text-emerald-400' : 'text-amber-400'">
+                  {{ p3Form.balance > 0 ? '+' : '' }}{{ p3Form.balance.toFixed(2) }} ({{ p3Form.balance > 0 ? 'Receptora neta' : p3Form.balance < 0 ? 'Emisora neta' : 'Neutro' }})
+                </span>
+              </div>
+              <input type="range" min="-0.6" max="0.6" step="0.02" v-model.number="p3Form.balance" class="w-full accent-indigo-500 cursor-pointer">
+              <div class="flex justify-between text-[10px] text-slate-500">
+                <span>-0.6 (Emisora fuerte)</span>
+                <span>0.0 (Equilibrada)</span>
+                <span>+0.6 (Receptora fuerte)</span>
+              </div>
+            </div>
+
+            <button @click="executeP3Predict" :disabled="p3Loading" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-medium text-sm rounded-xl shadow-lg shadow-indigo-500/20 transition flex items-center justify-center space-x-2">
+              <i class="fa-solid" :class="p3Loading ? 'fa-spinner fa-spin' : 'fa-network-wired'"></i>
+              <span>{{ p3Loading ? 'Clasificando con Modelo P3...' : 'Asignar Cluster de Estación' }}</span>
+            </button>
+          </div>
+
+          <!-- Resultado y Radar Chart (6 cols) -->
+          <div class="lg:col-span-6 space-y-6">
+            <!-- Card de Cluster Asignado -->
+            <div class="bg-gradient-to-br from-slate-900 to-slate-900/90 border border-slate-800 rounded-2xl p-6">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Resultado de Clasificación</span>
+                <span v-if="p3Result" class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  HTTP 200 · {{ p3ResponseTime }}ms
+                </span>
+              </div>
+
+              <div class="mt-3">
+                <div v-if="p3Result" class="space-y-3">
+                  <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-black" :class="clusterBadgeColor">
+                      C{{ p3Result.predictions[0] }}
+                    </div>
+                    <div>
+                      <h4 class="text-lg font-bold text-white">{{ clusterName }}</h4>
+                      <p class="text-xs text-slate-400">Modelo: {{ p3Result.model.name }} (v{{ p3Result.model.version }})</p>
+                    </div>
+                  </div>
+                  <p class="text-xs text-slate-300 bg-slate-950/60 p-3 rounded-lg border border-slate-800 leading-relaxed">
+                    {{ clusterDescription }}
+                  </p>
+                </div>
+                <div v-else class="text-slate-500 text-sm py-6 text-center">
+                  Selecciona el perfil de la estación y presiona <b>Asignar Cluster de Estación</b>.
+                </div>
+              </div>
+            </div>
+
+            <!-- Gráfico Radar de Perfil Operacional -->
+            <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-3">
+                <h4 class="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center">
+                  <i class="fa-solid fa-chart-pie text-indigo-400 mr-1.5"></i> Espacio Operacional (Normalizado)
+                </h4>
+                <span class="text-[10px] text-slate-500">Radar P3</span>
+              </div>
+              <div class="h-48 flex items-center justify-center">
+                <canvas id="p3RadarChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ================= PESTAÑA 3: SUITE DE PRUEBAS AUTOMATIZADAS ================= -->
+      <div v-show="activeTab === 'tests'" class="space-y-6">
+        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-xl font-bold text-white flex items-center">
+              <i class="fa-solid fa-vial-circle-check text-emerald-400 mr-2"></i> Suite Automatizada de Verificación en Producción
+            </h2>
+            <p class="text-sm text-slate-400 mt-1">
+              Ejecuta pruebas de humo, chequeos de salud, validaciones de esquema Pydantic e inferencias de regresión y clustering directamente en el servidor.
+            </p>
+          </div>
+          <button @click="runTestSuite" :disabled="runningTests" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-medium text-sm rounded-xl shadow-lg shadow-emerald-600/20 transition flex items-center justify-center space-x-2 shrink-0">
+            <i class="fa-solid" :class="runningTests ? 'fa-spinner fa-spin' : 'fa-play'"></i>
+            <span>{{ runningTests ? 'Ejecutando Pruebas...' : 'Ejecutar Suite Completa' }}</span>
+          </button>
+        </div>
+
+        <!-- Tabla de Pruebas -->
+        <div class="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                <tr>
+                  <th class="px-4 py-3">#</th>
+                  <th class="px-4 py-3">Caso de Prueba</th>
+                  <th class="px-4 py-3">Endpoint & Método</th>
+                  <th class="px-4 py-3">Código Esperado</th>
+                  <th class="px-4 py-3">Código Obtenido</th>
+                  <th class="px-4 py-3">Latencia</th>
+                  <th class="px-4 py-3">Resultado</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800 font-mono">
+                <tr v-for="(t, i) in testCases" :key="i" class="hover:bg-slate-800/40 transition">
+                  <td class="px-4 py-3 text-slate-400">{{ i + 1 }}</td>
+                  <td class="px-4 py-3 font-sans text-slate-200 font-medium">{{ t.name }}</td>
+                  <td class="px-4 py-3 text-sky-400">
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold mr-1" :class="t.method === 'GET' ? 'bg-sky-500/20 text-sky-300' : 'bg-indigo-500/20 text-indigo-300'">{{ t.method }}</span>
+                    <span>{{ t.path }}</span>
+                  </td>
+                  <td class="px-4 py-3 text-slate-400">{{ t.expectedStatus }}</td>
+                  <td class="px-4 py-3">
+                    <span v-if="t.actualStatus" :class="t.actualStatus === t.expectedStatus ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'">
+                      {{ t.actualStatus }}
+                    </span>
+                    <span v-else class="text-slate-600">—</span>
+                  </td>
+                  <td class="px-4 py-3 text-slate-400">
+                    <span v-if="t.duration">{{ t.duration }}ms</span>
+                    <span v-else class="text-slate-600">—</span>
+                  </td>
+                  <td class="px-4 py-3 font-sans">
+                    <span v-if="t.state === 'running'" class="text-amber-400 flex items-center">
+                      <i class="fa-solid fa-spinner fa-spin mr-1"></i> Ejecutando
+                    </span>
+                    <span v-else-if="t.state === 'pass'" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center w-max">
+                      <i class="fa-solid fa-check mr-1"></i> APROBADA
+                    </span>
+                    <span v-else-if="t.state === 'fail'" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center w-max">
+                      <i class="fa-solid fa-xmark mr-1"></i> FALLIDA
+                    </span>
+                    <span v-else class="text-slate-600">Pendiente</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ================= PESTAÑA 4: LOGS Y HISTORIAL ================= -->
+      <div v-show="activeTab === 'logs'" class="space-y-6">
+        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex items-center justify-between">
+          <div>
+            <h2 class="text-xl font-bold text-white flex items-center">
+              <i class="fa-solid fa-clock-rotate-left text-amber-400 mr-2"></i> Historial de Peticiones en Vivo
+            </h2>
+            <p class="text-sm text-slate-400 mt-1">
+              Registro en tiempo real de todas las inferencias y chequeos ejecutados durante esta sesión.
+            </p>
+          </div>
+          <button @click="requestLogs = []" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-lg border border-slate-700 transition flex items-center space-x-1">
+            <i class="fa-solid fa-trash-can mr-1"></i> Limpiar Historial
+          </button>
+        </div>
+
+        <div v-if="requestLogs.length === 0" class="bg-slate-900/40 border border-slate-800 rounded-2xl p-12 text-center text-slate-500 text-sm">
+          No hay peticiones registradas aún. Realiza una predicción en la pestaña P1 o P3 para ver el log en vivo.
+        </div>
+
+        <div v-else class="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs font-mono">
+              <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                <tr>
+                  <th class="px-4 py-3">Timestamp</th>
+                  <th class="px-4 py-3">Endpoint</th>
+                  <th class="px-4 py-3">Status</th>
+                  <th class="px-4 py-3">Latencia</th>
+                  <th class="px-4 py-3">Payload</th>
+                  <th class="px-4 py-3">Respuesta</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800">
+                <tr v-for="(log, idx) in requestLogs" :key="idx" class="hover:bg-slate-800/40 transition">
+                  <td class="px-4 py-2.5 text-slate-400">{{ log.time }}</td>
+                  <td class="px-4 py-2.5 text-sky-400">{{ log.method }} {{ log.endpoint }}</td>
+                  <td class="px-4 py-2.5">
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold" :class="log.status >= 200 && log.status < 300 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'">
+                      {{ log.status }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-2.5 text-slate-300">{{ log.latency }}ms</td>
+                  <td class="px-4 py-2.5 text-slate-400 truncate max-w-xs">{{ log.payload }}</td>
+                  <td class="px-4 py-2.5 text-slate-200 truncate max-w-xs font-sans">{{ log.response }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 bg-slate-950 py-6 text-xs text-slate-500">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div>
+          <span>Proyecto MiBici MLOps · Tec de Monterrey (TC5061) · Equipo 12</span>
+        </div>
+        <div class="flex items-center space-x-4 text-slate-400">
+          <span>Docker OCI</span>
+          <span>&bull;</span>
+          <span>FastAPI</span>
+          <span>&bull;</span>
+          <span>MLflow Model Registry</span>
+          <span>&bull;</span>
+          <span>Scikit-Learn</span>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Script Aplicación Vue 3 y Chart.js -->
+  <script>
+    const { createApp, ref, computed, onMounted, nextTick } = Vue;
+
+    createApp({
+      setup() {
+        const activeTab = ref('p1');
+        const checkingHealth = ref(false);
+        const p1Status = ref('pending');
+        const p1Latency = ref(null);
+        const p3Status = ref('pending');
+        const p3Latency = ref(null);
+        const requestLogs = ref([]);
+
+        // Formulario P1
+        const p1Form = ref({
+          trips_lag_1: 45.0,
+          trips_lag_7: 40.0,
+          trips_roll_mean_7: 42.5,
+          is_weekend: 0,
+          origen_id: 42,
+          dayofweek: 2, // Miércoles
+          month: 10
+        });
+
+        const p1Loading = ref(false);
+        const p1Result = ref(null);
+        const p1Success = ref(false);
+        const p1Error = ref(null);
+        const p1StatusCode = ref(null);
+        const p1ResponseTime = ref(null);
+        const p1Copied = ref(false);
+
+        let p1ChartInstance = null;
+        let p1WeeklyChartInstance = null;
+
+        // Formulario P3
+        const p3Form = ref({
+          prop_fin_semana: 0.19,
+          log_viajes_dia: 3.91,
+          balance: 0.02
+        });
+
+        const p3Loading = ref(false);
+        const p3Result = ref(null);
+        const p3ResponseTime = ref(null);
+        let p3RadarChartInstance = null;
+
+        // Suite de Pruebas
+        const runningTests = ref(false);
+        const testCases = ref([
+          { name: 'Healthcheck P1 (Demanda API)', method: 'GET', path: '/api/health', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle' },
+          { name: 'Inferencia Válida P1 (Demanda)', method: 'POST', path: '/api/predict', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle', body: { trips_lag_1: 20, trips_lag_7: 18, trips_roll_mean_7: 19.0, is_weekend: 0, origen_id: 42, dayofweek: 3, month: 9 } },
+          { name: 'Validación Pydantic P1 (Valor Negativo)', method: 'POST', path: '/api/predict', expectedStatus: 422, actualStatus: null, duration: null, state: 'idle', body: { trips_lag_1: -10, trips_lag_7: 15 } },
+          { name: 'Healthcheck P3 (Clustering API)', method: 'GET', path: '/p3/healthz', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle' },
+          { name: 'Inferencia Válida P3 (Estación)', method: 'POST', path: '/p3/predict', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle', body: { instances: [{ prop_fin_semana: 0.20, log_viajes_dia: 3.8, balance: 0.02 }] } },
+          { name: 'Inferencia Lote P3 (Múltiples Estaciones)', method: 'POST', path: '/p3/predict', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle', body: { instances: [{ prop_fin_semana: 0.15, log_viajes_dia: 4.1, balance: -0.1 }, { prop_fin_semana: 0.45, log_viajes_dia: 3.2, balance: 0.05 }] } }
+        ]);
+
+        const onDayChange = () => {
+          p1Form.value.is_weekend = (p1Form.value.dayofweek >= 5) ? 1 : 0;
+          updateCharts();
+        };
+
+        const p1CurlCommand = computed(() => {
+          return `curl -k -X POST https://161.132.54.170/api/predict \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(p1Form.value)}'`;
+        });
+
+        const copyP1Curl = () => {
+          navigator.clipboard.writeText(p1CurlCommand.value);
+          p1Copied.value = true;
+          setTimeout(() => p1Copied.value = false, 2000);
+        };
+
+        const applyP1Preset = (type) => {
+          if (type === 'laboral') {
+            p1Form.value = { trips_lag_1: 82.0, trips_lag_7: 78.0, trips_roll_mean_7: 80.5, is_weekend: 0, origen_id: 42, dayofweek: 1, month: 10 };
+          } else if (type === 'recreativo') {
+            p1Form.value = { trips_lag_1: 52.0, trips_lag_7: 48.0, trips_roll_mean_7: 45.0, is_weekend: 1, origen_id: 42, dayofweek: 6, month: 10 };
+          } else if (type === 'lluvioso') {
+            p1Form.value = { trips_lag_1: 14.0, trips_lag_7: 12.0, trips_roll_mean_7: 15.0, is_weekend: 0, origen_id: 120, dayofweek: 0, month: 8 };
+          } else if (type === 'invalido') {
+            p1Form.value = { trips_lag_1: -25.0, trips_lag_7: 10.0, trips_roll_mean_7: 15.0, is_weekend: 0, origen_id: 0, dayofweek: 8, month: 14 };
+          }
+          executeP1Predict();
+        };
+
+        const applyP3Preset = (type) => {
+          if (type === 'corporativo') {
+            p3Form.value = { prop_fin_semana: 0.12, log_viajes_dia: 4.35, balance: 0.15 };
+          } else if (type === 'recreativo') {
+            p3Form.value = { prop_fin_semana: 0.45, log_viajes_dia: 3.50, balance: 0.05 };
+          } else if (type === 'residencial') {
+            p3Form.value = { prop_fin_semana: 0.18, log_viajes_dia: 3.75, balance: -0.25 };
+          }
+          executeP3Predict();
+        };
+
+        const clusterName = computed(() => {
+          if (!p3Result.value) return '';
+          const c = p3Result.value.predictions[0];
+          if (c === 0) return 'Cluster 0 · Residencial Emisora';
+          if (c === 1) return 'Cluster 1 · Recreativa / Vía RecreActiva';
+          if (c === 2) return 'Cluster 2 · Céntrica de Alto Tráfico';
+          return `Cluster ${c}`;
+        });
+
+        const clusterBadgeColor = computed(() => {
+          if (!p3Result.value) return 'bg-slate-800 text-slate-300';
+          const c = p3Result.value.predictions[0];
+          if (c === 0) return 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
+          if (c === 1) return 'bg-purple-500/20 text-purple-400 border border-purple-500/30';
+          return 'bg-sky-500/20 text-sky-400 border border-sky-500/30';
+        });
+
+        const clusterDescription = computed(() => {
+          if (!p3Result.value) return '';
+          const c = p3Result.value.predictions[0];
+          if (c === 0) {
+            return 'Estaciones ubicadas en zonas residenciales o periferia con fuerte salida matutina hacia centros de empleo y balance predominantemente negativo. Requieren inyección matutina de bicicletas.';
+          } else if (c === 1) {
+            return 'Estaciones con alta concentración de viajes durante sábados y domingos (parques, corredores culturales o Vía RecreActiva). Uso predominantemente recreativo con flujo relajado.';
+          } else {
+            return 'Estaciones céntricas, corredores corporativos o nodos intermodales con alto volumen de viajes diarios de lunes a viernes y flujo balanceado o receptor neto. Nodos clave de la red.';
+          }
+        });
+
+        // Llamada a la API P1
+        const executeP1Predict = async () => {
+          p1Loading.value = true;
+          p1Error.value = null;
+          const t0 = performance.now();
+
+          try {
+            const resp = await fetch('/api/predict', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(p1Form.value)
+            });
+            const t1 = performance.now();
+            p1StatusCode.value = resp.status;
+            p1ResponseTime.value = Math.round(t1 - t0);
+
+            const data = await resp.json();
+            if (resp.ok) {
+              p1Success.value = true;
+              p1Result.value = data;
+              logRequest('POST', '/api/predict', resp.status, p1ResponseTime.value, JSON.stringify(p1Form.value), `Predicción: ${data.prediction.toFixed(2)} viajes`);
+              updateCharts();
+            } else {
+              p1Success.value = false;
+              p1Result.value = null;
+              p1Error.value = data.detail ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : 'Error en la petición';
+              logRequest('POST', '/api/predict', resp.status, p1ResponseTime.value, JSON.stringify(p1Form.value), `Error: ${resp.status}`);
+            }
+          } catch (err) {
+            p1Success.value = false;
+            p1Error.value = err.message || 'Error de red';
+          } finally {
+            p1Loading.value = false;
+          }
+        };
+
+        // Llamada a la API P3
+        const executeP3Predict = async () => {
+          p3Loading.value = true;
+          const t0 = performance.now();
+
+          try {
+            const payload = { instances: [p3Form.value] };
+            const resp = await fetch('/p3/predict', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const t1 = performance.now();
+            p3ResponseTime.value = Math.round(t1 - t0);
+            const data = await resp.json();
+
+            if (resp.ok) {
+              p3Result.value = data;
+              logRequest('POST', '/p3/predict', resp.status, p3ResponseTime.value, JSON.stringify(payload), `Cluster: ${data.predictions[0]}`);
+              updateRadarChart();
+            }
+          } catch (err) {
+            console.error(err);
+          } finally {
+            p3Loading.value = false;
+          }
+        };
+
+        // Check Health
+        const checkHealth = async () => {
+          checkingHealth.value = true;
+          try {
+            const t0 = performance.now();
+            const r1 = await fetch('/api/health');
+            p1Latency.value = Math.round(performance.now() - t0);
+            p1Status.value = r1.ok ? 'ok' : 'error';
+          } catch {
+            p1Status.value = 'error';
+          }
+
+          try {
+            const t0 = performance.now();
+            const r3 = await fetch('/p3/healthz');
+            p3Latency.value = Math.round(performance.now() - t0);
+            p3Status.value = r3.ok ? 'ok' : 'error';
+          } catch {
+            p3Status.value = 'error';
+          }
+          checkingHealth.value = false;
+        };
+
+        // Suite de Pruebas Automatizadas
+        const runTestSuite = async () => {
+          runningTests.value = true;
+          for (const test of testCases.value) {
+            test.state = 'running';
+            const t0 = performance.now();
+            try {
+              const opts = { method: test.method, headers: {} };
+              if (test.body) {
+                opts.headers['Content-Type'] = 'application/json';
+                opts.body = JSON.stringify(test.body);
+              }
+              const resp = await fetch(test.path, opts);
+              test.duration = Math.round(performance.now() - t0);
+              test.actualStatus = resp.status;
+              test.state = (resp.status === test.expectedStatus) ? 'pass' : 'fail';
+            } catch (e) {
+              test.duration = Math.round(performance.now() - t0);
+              test.actualStatus = 0;
+              test.state = 'fail';
+            }
+          }
+          runningTests.value = false;
+        };
+
+        const logRequest = (method, endpoint, status, latency, payload, response) => {
+          const now = new Date();
+          const time = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+          requestLogs.value.unshift({ time, method, endpoint, status, latency, payload, response });
+          if (requestLogs.value.length > 50) requestLogs.value.pop();
+        };
+
+        // Inicialización y Actualización de Gráficos (Chart.js)
+        const initCharts = () => {
+          // Gráfico 1: Inercia vs Predicción
+          const ctx1 = document.getElementById('p1Chart');
+          if (ctx1) {
+            p1ChartInstance = new Chart(ctx1, {
+              type: 'bar',
+              data: {
+                labels: ['Lag 7 (hace 7d)', 'Media Móvil 7d', 'Lag 1 (ayer)', 'Predicción P1'],
+                datasets: [{
+                  data: [p1Form.value.trips_lag_7, p1Form.value.trips_roll_mean_7, p1Form.value.trips_lag_1, 0],
+                  backgroundColor: ['#475569', '#64748b', '#38bdf8', '#10b981'],
+                  borderRadius: 6
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                  y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } },
+                  x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+                }
+              }
+            });
+          }
+
+          // Gráfico 2: Proyección Semanal
+          const ctx2 = document.getElementById('p1WeeklyChart');
+          if (ctx2) {
+            p1WeeklyChartInstance = new Chart(ctx2, {
+              type: 'line',
+              data: {
+                labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+                datasets: [{
+                  label: 'Demanda Estimada',
+                  data: [42, 45, 46, 44, 48, 28, 25],
+                  borderColor: '#6366f1',
+                  backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                  fill: true,
+                  tension: 0.35,
+                  pointBackgroundColor: '#818cf8',
+                  pointRadius: 4
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                  y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } },
+                  x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+                }
+              }
+            });
+          }
+
+          // Gráfico 3: Radar P3
+          const ctx3 = document.getElementById('p3RadarChart');
+          if (ctx3) {
+            p3RadarChartInstance = new Chart(ctx3, {
+              type: 'radar',
+              data: {
+                labels: ['Fin de Semana', 'Volumen Diario', 'Balance Llegadas'],
+                datasets: [{
+                  label: 'Perfil Estación',
+                  data: [p3Form.value.prop_fin_semana * 100, (p3Form.value.log_viajes_dia / 5) * 100, ((p3Form.value.balance + 0.6) / 1.2) * 100],
+                  borderColor: '#818cf8',
+                  backgroundColor: 'rgba(129, 140, 248, 0.25)',
+                  pointBackgroundColor: '#c084fc'
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                  r: {
+                    angleLines: { color: '#334155' },
+                    grid: { color: '#1e293b' },
+                    pointLabels: { color: '#94a3b8', font: { size: 10 } },
+                    ticks: { display: false }
+                  }
+                }
+              }
+            });
+          }
+        };
+
+        const updateCharts = () => {
+          if (p1ChartInstance) {
+            const pred = p1Result.value ? p1Result.value.prediction : 0;
+            p1ChartInstance.data.datasets[0].data = [
+              p1Form.value.trips_lag_7,
+              p1Form.value.trips_roll_mean_7,
+              p1Form.value.trips_lag_1,
+              pred
+            ];
+            p1ChartInstance.update();
+          }
+
+          if (p1WeeklyChartInstance && p1Result.value) {
+            const base = p1Result.value.prediction;
+            const simulated = [
+              Math.max(0, base * 0.95),
+              Math.max(0, base * 1.02),
+              Math.max(0, base * 1.01),
+              Math.max(0, base * 0.98),
+              Math.max(0, base * 1.08),
+              Math.max(0, base * 0.62),
+              Math.max(0, base * 0.55)
+            ];
+            p1WeeklyChartInstance.data.datasets[0].data = simulated;
+            p1WeeklyChartInstance.update();
+          }
+        };
+
+        const updateRadarChart = () => {
+          if (p3RadarChartInstance) {
+            p3RadarChartInstance.data.datasets[0].data = [
+              p3Form.value.prop_fin_semana * 100,
+              (p3Form.value.log_viajes_dia / 5) * 100,
+              ((p3Form.value.balance + 0.6) / 1.2) * 100
+            ];
+            p3RadarChartInstance.update();
+          }
+        };
+
+        onMounted(() => {
+          nextTick(() => {
+            initCharts();
+            checkHealth();
+            executeP1Predict();
+            executeP3Predict();
+          });
+        });
+
+        return {
+          activeTab,
+          checkingHealth,
+          p1Status,
+          p1Latency,
+          p3Status,
+          p3Latency,
+          requestLogs,
+          p1Form,
+          p1Loading,
+          p1Result,
+          p1Success,
+          p1Error,
+          p1StatusCode,
+          p1ResponseTime,
+          p1CurlCommand,
+          p1Copied,
+          copyP1Curl,
+          onDayChange,
+          applyP1Preset,
+          executeP1Predict,
+          p3Form,
+          p3Loading,
+          p3Result,
+          p3ResponseTime,
+          clusterName,
+          clusterBadgeColor,
+          clusterDescription,
+          applyP3Preset,
+          executeP3Predict,
+          checkHealth,
+          runningTests,
+          testCases,
+          runTestSuite
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

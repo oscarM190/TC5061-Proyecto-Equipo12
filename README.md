@@ -40,6 +40,25 @@ curl -X POST http://127.0.0.1:8000/predict \
 El [ejemplo de respuesta](examples/p3-response.json) incluye las etiquetas y el nombre, versión
 y corrida de origen del modelo. Swagger UI está en `http://127.0.0.1:8000/docs`.
 
+### Despliegue en Producción y Dashboard Web Interactivo
+
+Ambos modelos han sido promovidos a la etapa **`Production`** en el Model Registry de MLflow con el alias **`champion`**, y los servicios REST se encuentran en ejecución dentro de contenedores en el VPS del curso:
+
+- **Dashboard Interactivo & Playground Web:** [`https://161.132.54.170/apirest/`](https://161.132.54.170/apirest/)
+  - Permite probar interactivamente las predicciones con sliders de inercia, seleccionar estaciones, visualizar gráficos en tiempo real (Chart.js), ejecutar la suite completa de pruebas automatizadas y generar comandos `curl` y scripts en Python.
+  - El código de la interfaz se encuentra versionado en [`serving/dashboard/index.html`](serving/dashboard/index.html).
+- **MLflow Model Registry:** [`https://161.132.54.170/`](https://161.132.54.170/)
+  - Modelo P1 (Regresión de Demanda): `models:/mibici-equipo12-p1-demanda@champion` (v1, `Production`)
+  - Modelo P3 (Clustering de Estaciones): `models:/mibici-equipo12-p3-grupos@champion` (v1, `Production`)
+- **API REST P1 (Demanda Diaria):**
+  - Endpoint de Predicción: `POST https://161.132.54.170/api/predict`
+  - Healthcheck: `GET https://161.132.54.170/api/health`
+  - Swagger UI: [`https://161.132.54.170/api/docs`](https://161.132.54.170/api/docs)
+- **API REST P3 (Clustering de Estaciones):**
+  - Endpoint de Predicción: `POST https://161.132.54.170/p3/predict`
+  - Healthcheck: `GET https://161.132.54.170/p3/healthz`
+  - Swagger UI: [`https://161.132.54.170/p3/docs`](https://161.132.54.170/p3/docs)
+
 **Estrategia:** inferencia síncrona por HTTP para asignar perfiles agregados de estaciones a grupos.
 Se aceptan de 1 a 1000 perfiles por petición. El pipeline conserva su escalado, PCA y K-Means;
 la API no vuelve a entrenarlo. Una imagen por versión facilita repetir el despliegue y volver

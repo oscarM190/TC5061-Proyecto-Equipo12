@@ -12,8 +12,10 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 COPY requirements.txt .
+RUN python -m pip install --no-cache-dir -r requirements.txt
+
 COPY mi_bici_experiment ./mi_bici_experiment
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "pip install -r requirements.txt && (python -c 'import uvicorn' 2>/dev/null || pip install uvicorn) && exec uvicorn mi_bici_experiment.api:app --host 0.0.0.0 --port 8000"]
+CMD ["uvicorn", "mi_bici_experiment.api:app", "--host", "0.0.0.0", "--port", "8000"]

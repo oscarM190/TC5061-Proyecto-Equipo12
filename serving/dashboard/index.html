@@ -1,9 +1,29 @@
 <!DOCTYPE html>
-<html lang="es" class="dark">
+<html lang="es" class="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MiBici MLOps · Playground & Dashboard API REST</title>
+  <title>MiBici MLOps · Centro de Operaciones & Inferencia</title>
+
+  <!-- Prevención de FOUC de tema -->
+  <script>
+    (function() {
+      const savedTheme = localStorage.getItem('mibici_theme');
+      if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+        document.documentElement.classList.remove('light');
+      } else {
+        document.documentElement.classList.add('light');
+        document.documentElement.classList.remove('dark');
+      }
+    })();
+  </script>
+
+  <!-- Tipografía: Inter y JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -11,660 +31,868 @@
       darkMode: 'class',
       theme: {
         extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
           colors: {
             brand: {
-              50: '#eef2ff',
-              100: '#e0e7ff',
-              500: '#6366f1',
-              600: '#4f46e5',
-              700: '#4338ca',
-            },
-            mibici: {
-              primary: '#0ea5e9',
-              accent: '#10b981',
-              dark: '#0f172a'
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb', // Primario de acción #2563EB
+              700: '#1d4ed8',
             }
           }
         }
       }
     }
   </script>
-  <!-- FontAwesome -->
+
+  <!-- FontAwesome 6 -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  <!-- Chart.js -->
+  <!-- Chart.js 4 -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <!-- Vue 3 -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+
   <style>
     [v-cloak] { display: none; }
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: #0f172a; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    /* Sistema de Diseño: Tokens Semánticos (WCAG AA Compliant) */
+    :root, [data-theme="light"] {
+      --bg-page: #F6F8FC;               /* Fondo general (SaaS neutral) */
+      --bg-surface: #FFFFFF;            /* Tarjetas y paneles principales */
+      --bg-surface-subtle: #F8FAFC;     /* Superficies secundarias */
+      --bg-surface-muted: #F1F5F9;      /* Fondos de inputs / código */
+      --border-color: #E2E8F0;          /* Líneas divisorias */
+      --border-strong: #CBD5E1;         /* Bordes de inputs accesibles */
+      --text-primary: #172338;          /* Ratio 15.3:1 sobre blanco (AAA) */
+      --text-secondary: #475569;        /* Ratio 6.7:1 sobre blanco (AA) */
+      --text-muted: #64748B;            /* Ratio 4.6:1 sobre blanco (AA) */
+      --primary: #2563EB;               /* Azul interacción (#2563EB) */
+      --primary-hover: #1D4ED8;
+      --primary-subtle: #EFF6FF;
+      --success: #059669;
+      --success-subtle: #ECFDF5;
+      --warning: #D97706;
+      --warning-subtle: #FFFBEB;
+      --danger: #DC2626;
+      --danger-subtle: #FEF2F2;
+      --chart-grid: #E2E8F0;
+      --chart-text: #64748B;
+    }
+
+    html.dark, [data-theme="dark"] {
+      --bg-page: #090D16;               /* Fondo oscuro profundo */
+      --bg-surface: #0F172A;            /* Tarjetas modo oscuro (Slate 900) */
+      --bg-surface-subtle: #1E293B;     /* Superficies secundarias (Slate 800) */
+      --bg-surface-muted: #020617;      /* Inputs / consola (Slate 950) */
+      --border-color: #1E293B;
+      --border-strong: #334155;
+      --text-primary: #F8FAFC;          /* Ratio 16.5:1 (AAA) */
+      --text-secondary: #CBD5E1;        /* Ratio 10.5:1 (AAA) */
+      --text-muted: #94A3B8;            /* Ratio 6.2:1 (AA) */
+      --primary: #38BDF8;
+      --primary-hover: #0284C7;
+      --primary-subtle: rgba(56, 189, 248, 0.12);
+      --success: #34D399;
+      --success-subtle: rgba(52, 211, 153, 0.15);
+      --warning: #FBBF24;
+      --warning-subtle: rgba(251, 191, 36, 0.15);
+      --danger: #F87171;
+      --danger-subtle: rgba(248, 113, 113, 0.15);
+      --chart-grid: #1E293B;
+      --chart-text: #94A3B8;
+    }
+
+    body {
+      background-color: var(--bg-page);
+      color: var(--text-primary);
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Scrollbar minimalista */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+    html.dark ::-webkit-scrollbar-thumb { background: #334155; }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-indigo-500 selection:text-white">
-  <div id="app" v-cloak class="min-h-screen flex flex-col">
+<body class="min-h-screen font-sans antialiased text-sm">
+  <div id="app" v-cloak class="min-h-screen flex flex-col lg:flex-row">
 
-    <!-- Navbar Superior -->
-    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <i class="fa-solid fa-bicycle text-white text-lg"></i>
-          </div>
-          <div>
-            <div class="flex items-center space-x-2">
-              <span class="font-bold text-lg tracking-tight text-white">MiBici MLOps</span>
-              <span class="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold px-2 py-0.5 rounded-full">PRODUCCIÓN</span>
+    <!-- ================= SIDEBAR LATERAL (240px Desktop) ================= -->
+    <aside class="w-full lg:w-60 bg-[var(--bg-surface)] border-b lg:border-b-0 lg:border-r border-[var(--border-color)] flex flex-col justify-between shrink-0 z-40 transition-colors">
+      <div>
+        <!-- Logo y Header del Sidebar -->
+        <div class="h-16 flex items-center justify-between px-5 border-b border-[var(--border-color)]">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm">
+              <i class="fa-solid fa-bicycle text-sm"></i>
             </div>
-            <p class="text-xs text-slate-400">API REST Serving & Model Playground · Equipo 12</p>
-          </div>
-        </div>
-
-        <!-- Acciones y Enlaces Externos -->
-        <div class="flex items-center space-x-2 sm:space-x-4">
-          <button @click="checkHealth" :disabled="checkingHealth" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-medium rounded-lg border border-slate-700 transition flex items-center space-x-1.5">
-            <i class="fa-solid fa-rotate" :class="{'fa-spin': checkingHealth}"></i>
-            <span class="hidden sm:inline">Verificar Salud</span>
-          </button>
-          <a href="https://161.132.54.170/" target="_blank" class="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-medium rounded-lg transition flex items-center space-x-1.5">
-            <i class="fa-solid fa-server"></i>
-            <span class="hidden sm:inline">MLflow UI</span>
-          </a>
-          <a href="https://161.132.54.170/api/docs" target="_blank" class="px-3 py-1.5 bg-sky-600/20 hover:bg-sky-600/30 text-sky-300 border border-sky-500/30 text-xs font-medium rounded-lg transition flex items-center space-x-1.5">
-            <i class="fa-solid fa-book-open"></i>
-            <span class="hidden sm:inline">Swagger P1</span>
-          </a>
-        </div>
-      </div>
-    </header>
-
-    <!-- Barra de Estado de Servicios en Vivo -->
-    <div class="bg-slate-900/50 border-b border-slate-800/80 px-4 py-2.5 text-xs">
-      <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-        <div class="flex flex-wrap items-center gap-4">
-          <div class="flex items-center space-x-2">
-            <span class="w-2 h-2 rounded-full" :class="p1Status === 'ok' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'"></span>
-            <span class="text-slate-400">API P1 (Demanda):</span>
-            <span class="font-mono text-slate-200 font-medium">{{ p1Status === 'ok' ? 'Operativo (champion)' : 'Verificando...' }}</span>
-            <span v-if="p1Latency" class="text-slate-500 text-[10px]">({{ p1Latency }}ms)</span>
-          </div>
-          <div class="flex items-center space-x-2">
-            <span class="w-2 h-2 rounded-full" :class="p3Status === 'ok' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'"></span>
-            <span class="text-slate-400">API P3 (Clustering):</span>
-            <span class="font-mono text-slate-200 font-medium">{{ p3Status === 'ok' ? 'Operativo (champion)' : 'Verificando...' }}</span>
-            <span v-if="p3Latency" class="text-slate-500 text-[10px]">({{ p3Latency }}ms)</span>
-          </div>
-        </div>
-        <div class="text-slate-400 hidden md:flex items-center space-x-3">
-          <span><i class="fa-brands fa-docker text-sky-400 mr-1"></i> Contenedores OCI</span>
-          <span><i class="fa-solid fa-shield-halved text-emerald-400 mr-1"></i> SSL Let's Encrypt</span>
-          <span><i class="fa-solid fa-bolt text-amber-400 mr-1"></i> Inferencia en Tiempo Real</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Navegación por Pestañas -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2 w-full">
-      <nav class="flex space-x-2 border-b border-slate-800 overflow-x-auto">
-        <button @click="activeTab = 'p1'" :class="activeTab === 'p1' ? 'border-sky-500 text-sky-400 bg-sky-500/10' : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-4 py-2.5 border-b-2 font-medium text-sm rounded-t-lg transition flex items-center space-x-2 whitespace-nowrap">
-          <i class="fa-solid fa-chart-line"></i>
-          <span>Modelo P1 · Predicción de Demanda</span>
-        </button>
-        <button @click="activeTab = 'p3'" :class="activeTab === 'p3' ? 'border-indigo-500 text-indigo-400 bg-indigo-500/10' : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-4 py-2.5 border-b-2 font-medium text-sm rounded-t-lg transition flex items-center space-x-2 whitespace-nowrap">
-          <i class="fa-solid fa-network-wired"></i>
-          <span>Modelo P3 · Clustering de Estaciones</span>
-        </button>
-        <button @click="activeTab = 'tests'" :class="activeTab === 'tests' ? 'border-emerald-500 text-emerald-400 bg-emerald-500/10' : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-4 py-2.5 border-b-2 font-medium text-sm rounded-t-lg transition flex items-center space-x-2 whitespace-nowrap">
-          <i class="fa-solid fa-vial-circle-check"></i>
-          <span>Suite de Pruebas Automatizadas</span>
-        </button>
-        <button @click="activeTab = 'logs'" :class="activeTab === 'logs' ? 'border-amber-500 text-amber-400 bg-amber-500/10' : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900'" class="px-4 py-2.5 border-b-2 font-medium text-sm rounded-t-lg transition flex items-center space-x-2 whitespace-nowrap">
-          <i class="fa-solid fa-clock-rotate-left"></i>
-          <span>Historial de Peticiones ({{ requestLogs.length }})</span>
-        </button>
-      </nav>
-    </div>
-
-    <!-- Contenido Principal -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full flex-1">
-
-      <!-- ================= PESTAÑA 1: MODELO P1 DEMANDA ================= -->
-      <div v-show="activeTab === 'p1'" class="space-y-6">
-        <!-- Encabezado de la Pestaña -->
-        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
-          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <div class="flex items-center space-x-2">
-                <h2 class="text-xl font-bold text-white">Predicción de Demanda Diaria por Estación</h2>
-                <span class="text-xs bg-sky-500/20 text-sky-400 px-2 py-0.5 rounded-full border border-sky-500/30">Regresión · LinearRegression</span>
-              </div>
-              <p class="text-sm text-slate-400 mt-1">
-                Estima el número de salidas diarias en una cicloestación de MiBici según variables de inercia temporal y calendario, asistiendo la logística de rebalanceo de unidades.
+              <span class="font-bold text-base tracking-tight text-[var(--text-primary)]">MiBici MLOps</span>
+            </div>
+          </div>
+          <span class="px-2 py-0.5 text-[11px] font-semibold tracking-wide rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">PROD</span>
+        </div>
+
+        <!-- Menú de Navegación por Módulos -->
+        <div class="p-3 space-y-1" role="tablist">
+          <div class="px-3 pt-3 pb-1 text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+            Modelos en Producción
+          </div>
+
+          <button @click="activeTab = 'p1'" :class="activeTab === 'p1' ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 font-semibold border-l-2 border-blue-600' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)] hover:text-[var(--text-primary)]'" class="w-full flex items-center px-3 py-2.5 rounded-r-md text-sm transition text-left space-x-2.5" role="tab" :aria-selected="activeTab === 'p1'">
+            <i class="fa-solid fa-chart-line w-4 text-center"></i>
+            <span>Predicción Demanda (P1)</span>
+          </button>
+
+          <button @click="activeTab = 'p3'" :class="activeTab === 'p3' ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 font-semibold border-l-2 border-blue-600' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)] hover:text-[var(--text-primary)]'" class="w-full flex items-center px-3 py-2.5 rounded-r-md text-sm transition text-left space-x-2.5" role="tab" :aria-selected="activeTab === 'p3'">
+            <i class="fa-solid fa-cubes w-4 text-center"></i>
+            <span>Clustering Estaciones (P3)</span>
+          </button>
+
+          <div class="px-3 pt-4 pb-1 text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+            Auditoría & Calidad
+          </div>
+
+          <button @click="activeTab = 'history'" :class="activeTab === 'history' ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 font-semibold border-l-2 border-blue-600' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)] hover:text-[var(--text-primary)]'" class="w-full flex items-center px-3 py-2.5 rounded-r-md text-sm transition text-left space-x-2.5" role="tab" :aria-selected="activeTab === 'history'">
+            <i class="fa-solid fa-clock-rotate-left w-4 text-center"></i>
+            <div class="flex-1 flex justify-between items-center">
+              <span>Historial Inferencia</span>
+              <span v-if="requestLogs.length" class="text-xs bg-slate-200 dark:bg-slate-700 px-1.5 py-0.2 rounded-full font-mono tabular-nums">{{ requestLogs.length }}</span>
+            </div>
+          </button>
+
+          <button @click="activeTab = 'tests'" :class="activeTab === 'tests' ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 font-semibold border-l-2 border-blue-600' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)] hover:text-[var(--text-primary)]'" class="w-full flex items-center px-3 py-2.5 rounded-r-md text-sm transition text-left space-x-2.5" role="tab" :aria-selected="activeTab === 'tests'">
+            <i class="fa-solid fa-vial-circle-check w-4 text-center"></i>
+            <span>Suite de Pruebas</span>
+          </button>
+
+          <button @click="activeTab = 'health'" :class="activeTab === 'health' ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 font-semibold border-l-2 border-blue-600' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)] hover:text-[var(--text-primary)]'" class="w-full flex items-center px-3 py-2.5 rounded-r-md text-sm transition text-left space-x-2.5" role="tab" :aria-selected="activeTab === 'health'">
+            <i class="fa-solid fa-heart-pulse w-4 text-center"></i>
+            <span>Salud de Servicios</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Links Técnicos y Estado del Servidor -->
+      <div class="p-3 border-t border-[var(--border-color)] space-y-2">
+        <div class="px-2 py-1 text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider">
+          Herramientas Externas
+        </div>
+        <div class="space-y-1">
+          <a href="https://161.132.54.170/" target="_blank" class="flex items-center justify-between px-3 py-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-subtle)] rounded-md transition">
+            <span class="flex items-center space-x-2">
+              <i class="fa-solid fa-server w-4 text-slate-400"></i>
+              <span>MLflow Model Registry</span>
+            </span>
+            <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-400"></i>
+          </a>
+          <a href="https://161.132.54.170/api/docs" target="_blank" class="flex items-center justify-between px-3 py-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-subtle)] rounded-md transition">
+            <span class="flex items-center space-x-2">
+              <i class="fa-solid fa-book-open w-4 text-slate-400"></i>
+              <span>Swagger UI (OpenAPI)</span>
+            </span>
+            <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-400"></i>
+          </a>
+        </div>
+
+        <!-- Indicador de Servidor -->
+        <div class="mt-3 p-2.5 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] text-[11px]">
+          <div class="flex items-center justify-between text-[var(--text-muted)] mb-1">
+            <span>Servidor VPS</span>
+            <span class="font-mono">161.132.54.170</span>
+          </div>
+          <div class="flex items-center space-x-1.5 font-medium text-emerald-700 dark:text-emerald-400">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Contenedores en línea</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ================= CONTENEDOR PRINCIPAL ================= -->
+    <div class="flex-1 flex flex-col min-w-0">
+
+      <!-- TOPBAR SUPERIOR CONSOLIDADO -->
+      <header class="h-16 bg-[var(--bg-surface)] border-b border-[var(--border-color)] px-6 flex items-center justify-between shrink-0 transition-colors">
+        <!-- Breadcrumbs y Título Actual -->
+        <div class="flex items-center space-x-2">
+          <span class="text-xs font-medium text-[var(--text-muted)]">MiBici MLOps</span>
+          <span class="text-xs text-[var(--text-muted)]">/</span>
+          <span class="text-xs font-medium text-[var(--text-secondary)]">Inferencia</span>
+          <span class="text-xs text-[var(--text-muted)]">/</span>
+          <span class="text-sm font-semibold text-[var(--text-primary)]">{{ currentTabLabel }}</span>
+        </div>
+
+        <!-- Acciones: Health Check, Latencia y Switch Modo Claro/Oscuro -->
+        <div class="flex items-center space-x-3">
+          <!-- Botón de Ping Rápido -->
+          <button @click="checkHealth" :disabled="checkingHealth" class="h-9 px-3 bg-[var(--bg-surface-subtle)] hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xs font-medium rounded-lg border border-[var(--border-color)] transition flex items-center space-x-2">
+            <i class="fa-solid fa-rotate" :class="{'fa-spin': checkingHealth}"></i>
+            <span class="tabular-nums">{{ p1Latency ? `${p1Latency} ms` : 'Verificar Salud' }}</span>
+          </button>
+
+          <!-- Toggle Claro / Oscuro -->
+          <button @click="toggleTheme" class="h-9 w-9 bg-[var(--bg-surface-subtle)] hover:bg-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-lg border border-[var(--border-color)] transition flex items-center justify-center" :title="isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'">
+            <i class="fa-solid" :class="isDark ? 'fa-sun text-amber-400' : 'fa-moon text-slate-600'"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- ÁREA DE CONTENIDO -->
+      <main class="flex-1 p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
+
+        <!-- ================= SECCIÓN 1: PREDICCIÓN DE DEMANDA (P1) ================= -->
+        <section v-show="activeTab === 'p1'" class="space-y-6">
+
+          <!-- Encabezado de la Sección con Presets -->
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2">
+            <div>
+              <h1 class="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Predicción de Demanda Diaria</h1>
+              <p class="text-sm text-[var(--text-secondary)] mt-1">
+                Estimación de viajes de salida por cicloestación para rebalanceo preventivo (Modelo de Regresión P1 · champion).
               </p>
             </div>
+
             <!-- Presets Rápidos -->
             <div class="flex flex-wrap items-center gap-2">
-              <span class="text-xs text-slate-400 mr-1"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Presets:</span>
-              <button @click="applyP1Preset('laboral')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">
+              <span class="text-xs font-medium text-[var(--text-muted)] mr-1">Escenarios:</span>
+              <button @click="applyP1Preset('laboral')" :class="activePreset === 'laboral' ? 'ring-2 ring-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300' : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)]'" class="px-2.5 py-1 text-xs font-medium rounded-md border border-[var(--border-color)] transition">
                 ⚡ Pico Laboral
               </button>
-              <button @click="applyP1Preset('recreativo')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">
+              <button @click="applyP1Preset('recreativo')" :class="activePreset === 'recreativo' ? 'ring-2 ring-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300' : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)]'" class="px-2.5 py-1 text-xs font-medium rounded-md border border-[var(--border-color)] transition">
                 🌳 Fin de Semana
               </button>
-              <button @click="applyP1Preset('lluvioso')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">
+              <button @click="applyP1Preset('lluvioso')" :class="activePreset === 'lluvioso' ? 'ring-2 ring-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300' : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)]'" class="px-2.5 py-1 text-xs font-medium rounded-md border border-[var(--border-color)] transition">
                 🌧️ Día Bajo
               </button>
-              <button @click="applyP1Preset('invalido')" class="px-2.5 py-1 text-xs bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 rounded-md border border-rose-800/50 transition">
-                ⚠️ Test Error 422
+              <button @click="applyP1Preset('invalido')" :class="activePreset === 'invalido' ? 'ring-2 ring-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300' : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-surface-subtle)]'" class="px-2.5 py-1 text-xs font-medium rounded-md border border-[var(--border-color)] transition">
+                ⚠️ Test 422
               </button>
             </div>
           </div>
-        </div>
 
-        <!-- Grid: Formulario de Entrada y Panel de Resultados -->
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <!-- Grid Principal: Formulario 7 Cols | Resultados 5 Cols -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-          <!-- Columna Izquierda: Formulario de Entrada (7 cols) -->
-          <div class="lg:col-span-7 bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-5">
-            <h3 class="text-base font-semibold text-white flex items-center">
-              <i class="fa-solid fa-sliders text-sky-400 mr-2"></i> Variables del Modelo MiBici
-            </h3>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <!-- Estación de Origen -->
+            <!-- Columna Izquierda: Variables de Entrada (7 cols) -->
+            <div class="lg:col-span-7 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-6 shadow-sm space-y-6 transition-colors">
               <div>
-                <label class="block text-xs font-medium text-slate-300 mb-1">Estación de Origen (origen_id)</label>
-                <select v-model.number="p1Form.origen_id" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500">
-                  <option :value="42">42 · Av. Chapultepec / Vallarta</option>
-                  <option :value="10">10 · Plaza Universidad (Centro)</option>
-                  <option :value="65">65 · Glorieta Colón (Américas)</option>
-                  <option :value="120">120 · San Juan de Dios (Línea 2)</option>
-                  <option :value="214">214 · Ciudad Judicial / Periférico</option>
-                  <option :value="88">88 · Parque Revolución (Rojo)</option>
-                </select>
+                <h2 class="text-base font-semibold text-[var(--text-primary)]">Variables del Modelo</h2>
+                <p class="text-xs text-[var(--text-secondary)] mt-0.5">Configura los parámetros temporales e históricos de la estación.</p>
               </div>
 
-              <!-- Mes del Año -->
-              <div>
-                <label class="block text-xs font-medium text-slate-300 mb-1">Mes del Año (month: 1 a 12)</label>
-                <select v-model.number="p1Form.month" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500">
-                  <option :value="1">1 · Enero</option>
-                  <option :value="2">2 · Febrero</option>
-                  <option :value="3">3 · Marzo</option>
-                  <option :value="4">4 · Abril</option>
-                  <option :value="5">5 · Mayo</option>
-                  <option :value="6">6 · Junio</option>
-                  <option :value="7">7 · Julio</option>
-                  <option :value="8">8 · Agosto</option>
-                  <option :value="9">9 · Septiembre</option>
-                  <option :value="10">10 · Octubre</option>
-                  <option :value="11">11 · Noviembre</option>
-                  <option :value="12">12 · Diciembre</option>
-                </select>
-              </div>
+              <!-- Fila 1: Estación y Mes -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-1.5">
+                    Estación de Origen <span class="font-mono text-[11px] font-normal text-[var(--text-muted)]">(origen_id)</span>
+                  </label>
+                  <select v-model.number="p1Form.origen_id" @change="onParamChange" class="w-full h-10 px-3 bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] rounded-lg text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    <option :value="42">42 · Av. Chapultepec / Vallarta</option>
+                    <option :value="10">10 · Plaza Universidad (Centro)</option>
+                    <option :value="65">65 · Glorieta Colón (Américas)</option>
+                    <option :value="120">120 · San Juan de Dios (Línea 2)</option>
+                    <option :value="214">214 · Ciudad Judicial / Periférico</option>
+                    <option :value="88">88 · Parque Revolución (Rojo)</option>
+                  </select>
+                </div>
 
-              <!-- Día de la Semana -->
-              <div>
-                <label class="block text-xs font-medium text-slate-300 mb-1">Día de la Semana (dayofweek)</label>
-                <select v-model.number="p1Form.dayofweek" @change="onDayChange" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-500">
-                  <option :value="0">0 · Lunes (Laboral)</option>
-                  <option :value="1">1 · Martes (Laboral)</option>
-                  <option :value="2">2 · Miércoles (Laboral)</option>
-                  <option :value="3">3 · Jueves (Laboral)</option>
-                  <option :value="4">4 · Viernes (Laboral)</option>
-                  <option :value="5">5 · Sábado (Fin de Semana)</option>
-                  <option :value="6">6 · Domingo (Vía RecreActiva)</option>
-                </select>
-              </div>
-
-              <!-- Indicador Fin de Semana -->
-              <div>
-                <label class="block text-xs font-medium text-slate-300 mb-1">¿Es Fin de Semana? (is_weekend)</label>
-                <div class="flex items-center h-10 px-3 bg-slate-950 border border-slate-700 rounded-lg text-sm">
-                  <span v-if="p1Form.is_weekend === 1" class="text-emerald-400 font-semibold flex items-center">
-                    <i class="fa-solid fa-check-circle mr-1.5"></i> 1 (Sí, fin de semana)
-                  </span>
-                  <span v-else class="text-slate-400 flex items-center">
-                    <i class="fa-solid fa-briefcase mr-1.5"></i> 0 (No, día laboral)
-                  </span>
+                <div>
+                  <label class="block text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-1.5">
+                    Mes del Año <span class="font-mono text-[11px] font-normal text-[var(--text-muted)]">(month: 1-12)</span>
+                  </label>
+                  <select v-model.number="p1Form.month" @change="onParamChange" class="w-full h-10 px-3 bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] rounded-lg text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    <option :value="1">Enero</option>
+                    <option :value="2">Febrero</option>
+                    <option :value="3">Marzo</option>
+                    <option :value="4">Abril</option>
+                    <option :value="5">Mayo</option>
+                    <option :value="6">Junio</option>
+                    <option :value="7">Julio</option>
+                    <option :value="8">Agosto</option>
+                    <option :value="9">Septiembre</option>
+                    <option :value="10">Octubre</option>
+                    <option :value="11">Noviembre</option>
+                    <option :value="12">Diciembre</option>
+                  </select>
                 </div>
               </div>
+
+              <!-- Fila 2: Día de la semana y Derivación Automática de is_weekend -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-1.5">
+                    Día de la Semana <span class="font-mono text-[11px] font-normal text-[var(--text-muted)]">(dayofweek: 0-6)</span>
+                  </label>
+                  <select v-model.number="p1Form.dayofweek" @change="onDayChange" class="w-full h-10 px-3 bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] rounded-lg text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
+                    <option :value="0">Lunes (0)</option>
+                    <option :value="1">Martes (1)</option>
+                    <option :value="2">Miércoles (2)</option>
+                    <option :value="3">Jueves (3)</option>
+                    <option :value="4">Viernes (4)</option>
+                    <option :value="5">Sábado (5)</option>
+                    <option :value="6">Domingo (6)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-1.5">
+                    Tipo de Día <span class="font-mono text-[11px] font-normal text-[var(--text-muted)]">(is_weekend derivado)</span>
+                  </label>
+                  <div class="h-10 px-3 bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] rounded-lg flex items-center justify-between text-xs">
+                    <span v-if="p1Form.is_weekend === 1" class="text-amber-700 dark:text-amber-400 font-medium flex items-center">
+                      <i class="fa-solid fa-umbrella-beach mr-1.5"></i> Fin de Semana (1)
+                    </span>
+                    <span v-else class="text-blue-700 dark:text-blue-400 font-medium flex items-center">
+                      <i class="fa-solid fa-briefcase mr-1.5"></i> Día Laboral (0)
+                    </span>
+                    <span class="text-[11px] text-[var(--text-muted)]">Automático</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Controles Numéricos de Inercia Temporal con Steppers y Slider Auxiliar -->
+              <div class="space-y-4 pt-3 border-t border-[var(--border-color)]">
+                <div class="text-xs font-semibold text-[var(--text-primary)] uppercase tracking-wider">
+                  Inercia Temporal de Viajes
+                </div>
+
+                <!-- trips_lag_1 -->
+                <div class="p-3 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] space-y-2">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <span class="text-xs font-medium text-[var(--text-primary)]">Viajes del día anterior</span>
+                      <span class="text-[11px] font-mono text-[var(--text-muted)] ml-1">(trips_lag_1)</span>
+                    </div>
+                    <!-- Stepper numérico -->
+                    <div class="flex items-center space-x-1">
+                      <button @click="p1Form.trips_lag_1 = Math.max(0, p1Form.trips_lag_1 - 1); onParamChange()" class="w-7 h-7 bg-[var(--bg-surface)] hover:bg-[var(--border-color)] text-[var(--text-primary)] rounded border border-[var(--border-color)] text-xs font-bold transition flex items-center justify-center" aria-label="Disminuir viajes ayer">-</button>
+                      <input type="number" step="0.5" min="0" v-model.number="p1Form.trips_lag_1" @change="onParamChange" class="w-16 h-7 text-center font-mono text-xs font-semibold bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums">
+                      <button @click="p1Form.trips_lag_1 = p1Form.trips_lag_1 + 1; onParamChange()" class="w-7 h-7 bg-[var(--bg-surface)] hover:bg-[var(--border-color)] text-[var(--text-primary)] rounded border border-[var(--border-color)] text-xs font-bold transition flex items-center justify-center" aria-label="Aumentar viajes ayer">+</button>
+                    </div>
+                  </div>
+                  <input type="range" min="0" max="200" step="0.5" v-model.number="p1Form.trips_lag_1" @input="onParamChange" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600" aria-label="Slider viajes del día anterior">
+                </div>
+
+                <!-- trips_lag_7 -->
+                <div class="p-3 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] space-y-2">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <span class="text-xs font-medium text-[var(--text-primary)]">Viajes hace 7 días</span>
+                      <span class="text-[11px] font-mono text-[var(--text-muted)] ml-1">(trips_lag_7)</span>
+                    </div>
+                    <div class="flex items-center space-x-1">
+                      <button @click="p1Form.trips_lag_7 = Math.max(0, p1Form.trips_lag_7 - 1); onParamChange()" class="w-7 h-7 bg-[var(--bg-surface)] hover:bg-[var(--border-color)] text-[var(--text-primary)] rounded border border-[var(--border-color)] text-xs font-bold transition flex items-center justify-center" aria-label="Disminuir viajes hace 7 días">-</button>
+                      <input type="number" step="0.5" min="0" v-model.number="p1Form.trips_lag_7" @change="onParamChange" class="w-16 h-7 text-center font-mono text-xs font-semibold bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums">
+                      <button @click="p1Form.trips_lag_7 = p1Form.trips_lag_7 + 1; onParamChange()" class="w-7 h-7 bg-[var(--bg-surface)] hover:bg-[var(--border-color)] text-[var(--text-primary)] rounded border border-[var(--border-color)] text-xs font-bold transition flex items-center justify-center" aria-label="Aumentar viajes hace 7 días">+</button>
+                    </div>
+                  </div>
+                  <input type="range" min="0" max="200" step="0.5" v-model.number="p1Form.trips_lag_7" @input="onParamChange" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600" aria-label="Slider viajes hace 7 días">
+                </div>
+
+                <!-- trips_roll_mean_7 -->
+                <div class="p-3 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] space-y-2">
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <span class="text-xs font-medium text-[var(--text-primary)]">Media móvil de 7 días</span>
+                      <span class="text-[11px] font-mono text-[var(--text-muted)] ml-1">(trips_roll_mean_7)</span>
+                    </div>
+                    <div class="flex items-center space-x-1">
+                      <button @click="p1Form.trips_roll_mean_7 = Math.max(0, p1Form.trips_roll_mean_7 - 1); onParamChange()" class="w-7 h-7 bg-[var(--bg-surface)] hover:bg-[var(--border-color)] text-[var(--text-primary)] rounded border border-[var(--border-color)] text-xs font-bold transition flex items-center justify-center" aria-label="Disminuir media móvil">-</button>
+                      <input type="number" step="0.5" min="0" v-model.number="p1Form.trips_roll_mean_7" @change="onParamChange" class="w-16 h-7 text-center font-mono text-xs font-semibold bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums">
+                      <button @click="p1Form.trips_roll_mean_7 = p1Form.trips_roll_mean_7 + 1; onParamChange()" class="w-7 h-7 bg-[var(--bg-surface)] hover:bg-[var(--border-color)] text-[var(--text-primary)] rounded border border-[var(--border-color)] text-xs font-bold transition flex items-center justify-center" aria-label="Aumentar media móvil">+</button>
+                    </div>
+                  </div>
+                  <input type="range" min="0" max="200" step="0.5" v-model.number="p1Form.trips_roll_mean_7" @input="onParamChange" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600" aria-label="Slider media móvil">
+                </div>
+              </div>
+
+              <!-- Botón Primario Sólido (No degradados saturados) -->
+              <button @click="executeP1Predict" :disabled="p1Loading" class="w-full h-11 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-slate-400 text-white font-medium text-sm rounded-lg shadow-sm transition flex items-center justify-center space-x-2">
+                <i class="fa-solid" :class="p1Loading ? 'fa-spinner fa-spin' : 'fa-play'"></i>
+                <span>{{ p1Loading ? 'Ejecutando inferencia en servidor...' : 'Calcular predicción' }}</span>
+              </button>
             </div>
 
-            <!-- Sliders de Inercia Temporal -->
-            <div class="space-y-4 pt-2 border-t border-slate-800">
-              <!-- trips_lag_1 -->
-              <div>
-                <div class="flex justify-between items-center text-xs mb-1">
-                  <span class="font-medium text-slate-300">Viajes del día anterior (trips_lag_1)</span>
-                  <input type="number" step="0.1" v-model.number="p1Form.trips_lag_1" class="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right font-mono text-xs text-sky-400">
+            <!-- Columna Derecha: Tarjeta Focal de Resultados (5 cols) -->
+            <div class="lg:col-span-5 space-y-5">
+
+              <!-- Tarjeta Focal de Demanda (Punto Focal de la Pantalla) -->
+              <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-6 shadow-sm space-y-4 transition-colors" aria-live="polite">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-semibold tracking-wider uppercase text-[var(--text-secondary)]">Demanda Estimada</span>
+                  <span v-if="p1Result || p1Error" class="px-2 py-0.5 rounded text-xs font-medium tabular-nums" :class="p1Success ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800'">
+                    {{ p1Success ? 'Completada' : 'Error' }} · HTTP {{ p1StatusCode }}
+                  </span>
                 </div>
-                <input type="range" min="0" max="150" step="1" v-model.number="p1Form.trips_lag_1" class="w-full accent-sky-500 cursor-pointer">
-                <div class="flex justify-between text-[10px] text-slate-500"><span>0 viajes</span><span>75 viajes</span><span>150 viajes</span></div>
+
+                <!-- Métrica Focal Destacada: 48px con Cifras Tabulares -->
+                <div class="py-2">
+                  <div v-if="p1Loading" class="text-4xl font-bold text-slate-400 animate-pulse">
+                    Calculando...
+                  </div>
+                  <div v-else-if="p1Success && p1Result" class="space-y-1">
+                    <div class="flex items-baseline space-x-2">
+                      <span class="text-5xl font-extrabold tracking-tight text-[var(--text-primary)] font-mono tabular-nums">
+                        {{ p1Result.prediction.toFixed(1) }}
+                      </span>
+                      <span class="text-sm font-medium text-[var(--text-secondary)]">viajes / día</span>
+                    </div>
+                    <p class="text-xs text-[var(--text-muted)]">
+                      Aproximadamente <span class="font-semibold text-[var(--text-primary)] tabular-nums">~{{ Math.round(p1Result.prediction) }} viajes</span> esperados para esta estación.
+                    </p>
+                  </div>
+                  <div v-else-if="!p1Success && p1Error" class="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-400 text-xs font-mono">
+                    <i class="fa-solid fa-circle-exclamation mr-1"></i> {{ p1Error }}
+                  </div>
+                  <div v-else class="text-slate-400 text-xs py-4">
+                    Presiona "Calcular predicción" para ejecutar el modelo.
+                  </div>
+                </div>
+
+                <!-- Recomendación Operativa Logística -->
+                <div v-if="p1Success && p1Result" class="p-3.5 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] text-xs space-y-1">
+                  <div class="font-semibold text-[var(--text-primary)] flex items-center">
+                    <i class="fa-solid fa-truck-ramp-box text-blue-600 dark:text-blue-400 mr-1.5"></i> Recomendación Logística
+                  </div>
+                  <p v-if="p1Result.prediction >= 60" class="text-[var(--text-secondary)] leading-relaxed">
+                    Demanda relativamente alta. Se sugiere programar el arribo de furgoneta de recarga entre 07:00 y 09:00 hrs y monitorear la disponibilidad de anclajes.
+                  </p>
+                  <p v-else-if="p1Result.prediction >= 25" class="text-[var(--text-secondary)] leading-relaxed">
+                    Demanda en rango nominal estándar. Monitoreo regular de muelles libres durante la ruta de patrullaje habitual.
+                  </p>
+                  <p v-else class="text-[var(--text-secondary)] leading-relaxed">
+                    Demanda relativamente baja. Evaluar la redistribución de bicicletas hacia estaciones de mayor demanda, considerando su disponibilidad real.
+                  </p>
+                </div>
+
+                <!-- Metadatos de Diagnóstico Técnicos (Discretos) -->
+                <div class="pt-3 border-t border-[var(--border-color)] flex items-center justify-between text-xs text-[var(--text-muted)]">
+                  <span>Modelo: <span class="font-mono text-[var(--text-secondary)]">P1 · LinearRegression</span></span>
+                  <span v-if="p1ResponseTime" class="font-mono tabular-nums">{{ p1ResponseTime }} ms</span>
+                </div>
               </div>
 
-              <!-- trips_lag_7 -->
-              <div>
-                <div class="flex justify-between items-center text-xs mb-1">
-                  <span class="font-medium text-slate-300">Viajes hace 7 días (trips_lag_7)</span>
-                  <input type="number" step="0.1" v-model.number="p1Form.trips_lag_7" class="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right font-mono text-xs text-sky-400">
+              <!-- Gráfico de Barras: Comparación con Valores Históricos -->
+              <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-5 shadow-sm space-y-3 transition-colors">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+                    Comparación con Valores Históricos
+                  </h3>
+                  <span class="text-[11px] text-[var(--text-muted)]">Unidad: viajes/día</span>
                 </div>
-                <input type="range" min="0" max="150" step="1" v-model.number="p1Form.trips_lag_7" class="w-full accent-sky-500 cursor-pointer">
-                <div class="flex justify-between text-[10px] text-slate-500"><span>0 viajes</span><span>75 viajes</span><span>150 viajes</span></div>
+                <div class="h-44 relative">
+                  <canvas id="p1HistoricalChart"></canvas>
+                </div>
               </div>
 
-              <!-- trips_roll_mean_7 -->
-              <div>
-                <div class="flex justify-between items-center text-xs mb-1">
-                  <span class="font-medium text-slate-300">Promedio móvil de 7 días (trips_roll_mean_7)</span>
-                  <input type="number" step="0.1" v-model.number="p1Form.trips_roll_mean_7" class="w-20 bg-slate-950 border border-slate-700 rounded px-2 py-0.5 text-right font-mono text-xs text-sky-400">
-                </div>
-                <input type="range" min="0" max="150" step="0.5" v-model.number="p1Form.trips_roll_mean_7" class="w-full accent-sky-500 cursor-pointer">
-                <div class="flex justify-between text-[10px] text-slate-500"><span>0 viajes</span><span>75 viajes</span><span>150 viajes</span></div>
-              </div>
             </div>
-
-            <!-- Botón de Ejecutar Predicción -->
-            <button @click="executeP1Predict" :disabled="p1Loading" class="w-full py-3 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-600 hover:to-indigo-700 text-white font-medium text-sm rounded-xl shadow-lg shadow-sky-500/20 transition flex items-center justify-center space-x-2">
-              <i class="fa-solid" :class="p1Loading ? 'fa-spinner fa-spin' : 'fa-bolt'"></i>
-              <span>{{ p1Loading ? 'Consultando API en Producción...' : 'Calcular Predicción en Vivo' }}</span>
-            </button>
           </div>
 
-          <!-- Columna Derecha: Resultado y Métricas de Inferencia (5 cols) -->
-          <div class="lg:col-span-5 space-y-6">
-            <!-- Card de Resultado Principal -->
-            <div class="bg-gradient-to-br from-slate-900 to-slate-900/90 border border-slate-800 rounded-2xl p-6 relative overflow-hidden">
-              <div class="absolute -right-10 -bottom-10 opacity-10 text-9xl text-sky-500 pointer-events-none">
-                <i class="fa-solid fa-bicycle"></i>
-              </div>
-
+          <!-- Gráfica Semanal y Consola de Código -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <!-- Gráfica de Proyección Semanal (7 cols) -->
+            <div class="lg:col-span-7 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-6 shadow-sm space-y-3 transition-colors">
               <div class="flex items-center justify-between">
-                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Demanda Estimada</span>
-                <span v-if="p1Result || p1Error" class="px-2 py-0.5 rounded text-[10px] font-mono" :class="p1Success ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'">
-                  HTTP {{ p1StatusCode }} · {{ p1ResponseTime }}ms
-                </span>
+                <div>
+                  <h3 class="text-sm font-semibold text-[var(--text-primary)]">Proyección Estimada de la Semana</h3>
+                  <p class="text-xs text-[var(--text-secondary)]">Tendencia esperada según el perfil laboral / fin de semana para la estación seleccionada.</p>
+                </div>
+                <span class="text-xs font-mono text-[var(--text-muted)]">Estación #{{ p1Form.origen_id }}</span>
               </div>
-
-              <div class="mt-3 mb-2">
-                <div v-if="p1Loading" class="text-4xl font-black text-slate-500 animate-pulse">Calculando...</div>
-                <div v-else-if="p1Success && p1Result" class="flex items-baseline space-x-2">
-                  <span class="text-5xl font-black tracking-tight text-white">{{ p1Result.prediction.toFixed(1) }}</span>
-                  <span class="text-slate-400 font-medium text-sm">viajes diarios</span>
-                </div>
-                <div v-else-if="!p1Success && p1Error" class="text-rose-400 text-xs font-mono bg-rose-950/40 p-3 rounded-lg border border-rose-900/50">
-                  <i class="fa-solid fa-triangle-exclamation mr-1"></i> {{ p1Error }}
-                </div>
-                <div v-else class="text-slate-500 text-sm py-4">
-                  Ajusta los parámetros y presiona <b>Calcular Predicción en Vivo</b>.
-                </div>
-              </div>
-
-              <!-- Recomendación Operativa -->
-              <div v-if="p1Success && p1Result" class="mt-4 pt-4 border-t border-slate-800 text-xs">
-                <div class="font-medium text-slate-300 mb-1 flex items-center">
-                  <i class="fa-solid fa-truck-ramp-box text-amber-400 mr-1.5"></i> Recomendación Logística:
-                </div>
-                <p v-if="p1Result.prediction >= 60" class="text-amber-300/90 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20">
-                  <b>Alta Demanda:</b> Programar arribo de furgoneta de recarga entre 07:00 y 09:00 hrs. Asignar al menos 15 muelles vacíos para recepción en horas de la tarde.
-                </p>
-                <p v-else-if="p1Result.prediction >= 25" class="text-sky-300/90 bg-sky-500/10 p-2 rounded-lg border border-sky-500/20">
-                  <b>Demanda Regular:</b> Estación en rango nominal. Inspección de anclajes rutinaria durante recorrido vespertino.
-                </p>
-                <p v-else class="text-emerald-300/90 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
-                  <b>Baja Demanda:</b> Flujo tranquilo. Estación apta para retiro temporal de unidades excedentes para balancear nodos críticos.
-                </p>
-              </div>
-
-              <!-- Metadata del Modelo -->
-              <div v-if="p1Result" class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-                <span>Modelo Registrado:</span>
-                <span class="font-mono text-slate-300">{{ p1Result.model || 'models:/mibici-equipo12-p1-demanda@champion' }}</span>
+              <div class="h-56 relative">
+                <canvas id="p1WeeklyChart"></canvas>
               </div>
             </div>
 
-            <!-- Gráfico Comparativo de Inercia vs Predicción -->
-            <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
-              <div class="flex items-center justify-between mb-3">
-                <h4 class="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center">
-                  <i class="fa-solid fa-chart-column text-sky-400 mr-1.5"></i> Inercia vs Predicción
-                </h4>
-                <span class="text-[10px] text-slate-500">Actualización en vivo</span>
-              </div>
-              <div class="h-44">
-                <canvas id="p1Chart"></canvas>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Gráfico de Proyección Semanal Estimada y Snippets de Código -->
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div class="lg:col-span-7 bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
-            <div class="flex items-center justify-between mb-3">
-              <h4 class="text-sm font-semibold text-white flex items-center">
-                <i class="fa-solid fa-chart-area text-indigo-400 mr-2"></i> Proyección Estimada de la Semana
-              </h4>
-              <span class="text-xs text-slate-400">Variación por día para la estación {{ p1Form.origen_id }}</span>
-            </div>
-            <div class="h-52">
-              <canvas id="p1WeeklyChart"></canvas>
-            </div>
-          </div>
-
-          <div class="lg:col-span-5 bg-slate-900/70 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between">
-            <div>
-              <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                  <i class="fa-solid fa-terminal text-sky-400 mr-1"></i> Comando cURL Equivalente
-                </span>
-                <button @click="copyP1Curl" class="text-xs text-sky-400 hover:text-sky-300 transition flex items-center space-x-1">
+            <!-- Consola de Integración cURL / Python (5 cols) -->
+            <div class="lg:col-span-5 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-6 shadow-sm space-y-3 transition-colors">
+              <div class="flex items-center justify-between">
+                <div class="flex space-x-2">
+                  <button @click="codeSnippetType = 'curl'" :class="codeSnippetType === 'curl' ? 'text-blue-600 border-b-2 border-blue-600 font-semibold' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'" class="pb-1 text-xs">
+                    cURL
+                  </button>
+                  <button @click="codeSnippetType = 'python'" :class="codeSnippetType === 'python' ? 'text-blue-600 border-b-2 border-blue-600 font-semibold' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'" class="pb-1 text-xs">
+                    Python
+                  </button>
+                </div>
+                <button @click="copyCodeSnippet" class="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center space-x-1" aria-label="Copiar código al portapapeles">
                   <i class="fa-regular fa-copy"></i>
-                  <span>{{ p1Copied ? '¡Copiado!' : 'Copiar' }}</span>
+                  <span>{{ codeCopied ? '¡Copiado!' : 'Copiar' }}</span>
                 </button>
               </div>
-              <pre class="bg-slate-950 p-3 rounded-lg text-[11px] font-mono text-slate-300 overflow-x-auto border border-slate-800 leading-relaxed">{{ p1CurlCommand }}</pre>
-            </div>
-            <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-              <span>Endpoint: <code class="text-slate-300 font-mono">POST /api/predict</code></span>
-              <a href="https://161.132.54.170/api/docs" target="_blank" class="text-sky-400 hover:underline">Ver Swagger OpenAPI &rarr;</a>
+
+              <div class="bg-[var(--bg-surface-subtle)] p-3.5 rounded-lg border border-[var(--border-color)]">
+                <pre class="font-mono text-xs text-[var(--text-primary)] overflow-x-auto leading-relaxed">{{ currentCodeSnippet }}</pre>
+              </div>
+
+              <div class="flex items-center justify-between text-xs text-[var(--text-muted)] pt-1">
+                <span>Ruta: <code class="font-mono text-[var(--text-secondary)]">POST /api/predict</code></span>
+                <a href="https://161.132.54.170/api/docs" target="_blank" class="text-blue-600 hover:underline">Ver Swagger UI &rarr;</a>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
+
+        </section>
 
 
-      <!-- ================= PESTAÑA 2: MODELO P3 CLUSTERING ================= -->
-      <div v-show="activeTab === 'p3'" class="space-y-6">
-        <!-- Encabezado P3 -->
-        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
-          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <!-- ================= SECCIÓN 2: CLUSTERING DE ESTACIONES (P3) ================= -->
+        <section v-show="activeTab === 'p3'" class="space-y-6">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2">
             <div>
-              <div class="flex items-center space-x-2">
-                <h2 class="text-xl font-bold text-white">Agrupación y Perfiles de Estaciones (P3)</h2>
-                <span class="text-xs bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full border border-indigo-500/30">Clustering · Pipeline (PCA + KMeans)</span>
-              </div>
-              <p class="text-sm text-slate-400 mt-1">
-                Clasifica las estaciones en grupos según el patrón de uso (proporción fin de semana, volumen logarítmico y balance neto de viajes).
+              <h1 class="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Agrupación de Cicloestaciones</h1>
+              <p class="text-sm text-[var(--text-secondary)] mt-1">
+                Clasificación de perfiles de uso en clusters mediante pipeline no supervisado (StandardScaler + PCA + KMeans · Modelo P3).
               </p>
             </div>
-            <!-- Presets P3 -->
             <div class="flex flex-wrap items-center gap-2">
-              <span class="text-xs text-slate-400 mr-1"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Presets:</span>
-              <button @click="applyP3Preset('corporativo')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">
+              <span class="text-xs font-medium text-[var(--text-muted)] mr-1">Perfiles:</span>
+              <button @click="applyP3Preset('corporativo')" class="px-2.5 py-1 text-xs font-medium bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-subtle)] text-[var(--text-secondary)] rounded-md border border-[var(--border-color)] transition">
                 🏢 Corporativo / Centro
               </button>
-              <button @click="applyP3Preset('recreativo')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">
-                🎪 Recreativo (Fin de Sem.)
+              <button @click="applyP3Preset('recreativo')" class="px-2.5 py-1 text-xs font-medium bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-subtle)] text-[var(--text-secondary)] rounded-md border border-[var(--border-color)] transition">
+                🎪 Recreativo (Sáb/Dom)
               </button>
-              <button @click="applyP3Preset('residencial')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md border border-slate-700 transition">
+              <button @click="applyP3Preset('residencial')" class="px-2.5 py-1 text-xs font-medium bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-subtle)] text-[var(--text-secondary)] rounded-md border border-[var(--border-color)] transition">
                 🏘️ Residencial Emisora
               </button>
             </div>
           </div>
-        </div>
 
-        <!-- Grid Contenido P3 -->
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <!-- Formulario P3 (6 cols) -->
-          <div class="lg:col-span-6 bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-5">
-            <h3 class="text-base font-semibold text-white flex items-center">
-              <i class="fa-solid fa-sliders text-indigo-400 mr-2"></i> Perfil Operacional de la Estación
-            </h3>
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <!-- Formulario P3 con Inputs Numéricos + Sliders (6 cols) -->
+            <div class="lg:col-span-6 bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-6 shadow-sm space-y-5 transition-colors">
+              <div>
+                <h2 class="text-base font-semibold text-[var(--text-primary)]">Parámetros Operacionales</h2>
+                <p class="text-xs text-[var(--text-secondary)] mt-0.5">Métricas agregadas que definen el comportamiento de la estación.</p>
+              </div>
 
-            <!-- prop_fin_semana -->
-            <div>
-              <div class="flex justify-between items-center text-xs mb-1">
-                <span class="font-medium text-slate-300">Proporción en Fin de Semana (prop_fin_semana)</span>
-                <span class="font-mono text-indigo-400 text-xs font-semibold">{{ (p3Form.prop_fin_semana * 100).toFixed(1) }}%</span>
+              <!-- prop_fin_semana con input numérico de precisión -->
+              <div class="p-3.5 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] space-y-2">
+                <div class="flex justify-between items-center text-xs">
+                  <div>
+                    <span class="font-medium text-[var(--text-primary)]">Proporción Fin de Semana</span>
+                    <span class="text-[11px] font-mono text-[var(--text-muted)] ml-1">(prop_fin_semana)</span>
+                  </div>
+                  <input type="number" step="0.01" min="0" max="1" v-model.number="p3Form.prop_fin_semana" @input="onP3ParamChange" class="w-20 h-7 text-center font-mono text-xs font-semibold bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums">
+                </div>
+                <input type="range" min="0.0" max="1.0" step="0.01" v-model.number="p3Form.prop_fin_semana" @input="onP3ParamChange" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600" aria-label="Slider proporción fin de semana">
+                <div class="flex justify-between text-[11px] text-[var(--text-muted)]">
+                  <span>0% (Solo Laboral)</span>
+                  <span>28.5% (Uniforme)</span>
+                  <span>100% (Solo Fines)</span>
+                </div>
               </div>
-              <input type="range" min="0.0" max="1.0" step="0.01" v-model.number="p3Form.prop_fin_semana" class="w-full accent-indigo-500 cursor-pointer">
-              <div class="flex justify-between text-[10px] text-slate-500">
-                <span>0% (Solo Laboral)</span>
-                <span>28.5% (Uniforme)</span>
-                <span>100% (Solo Sáb/Dom)</span>
+
+              <!-- log_viajes_dia con input numérico -->
+              <div class="p-3.5 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] space-y-2">
+                <div class="flex justify-between items-center text-xs">
+                  <div>
+                    <span class="font-medium text-[var(--text-primary)]">Volumen Diario Logarítmico</span>
+                    <span class="text-[11px] font-mono text-[var(--text-muted)] ml-1">(log_viajes_dia)</span>
+                  </div>
+                  <input type="number" step="0.05" min="0.5" max="6.0" v-model.number="p3Form.log_viajes_dia" @input="onP3ParamChange" class="w-20 h-7 text-center font-mono text-xs font-semibold bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums">
+                </div>
+                <input type="range" min="0.5" max="6.0" step="0.05" v-model.number="p3Form.log_viajes_dia" @input="onP3ParamChange" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600" aria-label="Slider log viajes día">
+                <div class="flex justify-between text-[11px] text-[var(--text-muted)]">
+                  <span>0.5 (~1 viaje)</span>
+                  <span>3.0 (~19 viajes)</span>
+                  <span>6.0 (~400 viajes)</span>
+                </div>
               </div>
+
+              <!-- balance con rango completo [-1.0 a 1.0] e input numérico -->
+              <div class="p-3.5 rounded-lg bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] space-y-2">
+                <div class="flex justify-between items-center text-xs">
+                  <div>
+                    <span class="font-medium text-[var(--text-primary)]">Balance Neto de Flujo</span>
+                    <span class="text-[11px] font-mono text-[var(--text-muted)] ml-1">(balance: [-1, 1])</span>
+                  </div>
+                  <input type="number" step="0.02" min="-1.0" max="1.0" v-model.number="p3Form.balance" @input="onP3ParamChange" class="w-20 h-7 text-center font-mono text-xs font-semibold bg-[var(--bg-surface)] border border-[var(--border-color)] rounded text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-blue-500 tabular-nums">
+                </div>
+                <input type="range" min="-1.0" max="1.0" step="0.02" v-model.number="p3Form.balance" @input="onP3ParamChange" class="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-600" aria-label="Slider balance de flujo">
+                <div class="flex justify-between text-[11px] text-[var(--text-muted)]">
+                  <span>-1.0 (Emisora pura)</span>
+                  <span>0.0 (Equilibrada)</span>
+                  <span>+1.0 (Receptora pura)</span>
+                </div>
+              </div>
+
+              <button @click="executeP3Predict" :disabled="p3Loading" class="w-full h-11 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-slate-400 text-white font-medium text-sm rounded-lg shadow-sm transition flex items-center justify-center space-x-2">
+                <i class="fa-solid" :class="p3Loading ? 'fa-spinner fa-spin' : 'fa-cubes'"></i>
+                <span>{{ p3Loading ? 'Clasificando estación...' : 'Asignar cluster' }}</span>
+              </button>
             </div>
 
-            <!-- log_viajes_dia -->
-            <div>
-              <div class="flex justify-between items-center text-xs mb-1">
-                <span class="font-medium text-slate-300">Volumen diario logarítmico (log_viajes_dia)</span>
-                <span class="font-mono text-indigo-400 text-xs font-semibold">{{ p3Form.log_viajes_dia.toFixed(2) }} (~{{ Math.round(Math.expm1(p3Form.log_viajes_dia)) }} viajes/día)</span>
-              </div>
-              <input type="range" min="0.5" max="5.5" step="0.05" v-model.number="p3Form.log_viajes_dia" class="w-full accent-indigo-500 cursor-pointer">
-              <div class="flex justify-between text-[10px] text-slate-500">
-                <span>0.5 (~1 viaje)</span>
-                <span>3.0 (~19 viajes)</span>
-                <span>5.5 (~240 viajes)</span>
-              </div>
-            </div>
+            <!-- Resultados y Gráfico Radar P3 (6 cols) -->
+            <div class="lg:col-span-6 space-y-5">
+              <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-6 shadow-sm space-y-4 transition-colors" aria-live="polite">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-semibold uppercase text-[var(--text-secondary)] tracking-wider">Cluster Asignado</span>
+                  <span v-if="p3Result" class="px-2 py-0.5 rounded text-xs font-medium tabular-nums bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                    HTTP 200 · {{ p3ResponseTime }} ms
+                  </span>
+                </div>
 
-            <!-- balance -->
-            <div>
-              <div class="flex justify-between items-center text-xs mb-1">
-                <span class="font-medium text-slate-300">Balance Neto de Flujo (balance = [llegadas - salidas] / total)</span>
-                <span class="font-mono text-xs font-semibold" :class="p3Form.balance >= 0 ? 'text-emerald-400' : 'text-amber-400'">
-                  {{ p3Form.balance > 0 ? '+' : '' }}{{ p3Form.balance.toFixed(2) }} ({{ p3Form.balance > 0 ? 'Receptora neta' : p3Form.balance < 0 ? 'Emisora neta' : 'Neutro' }})
-                </span>
-              </div>
-              <input type="range" min="-0.6" max="0.6" step="0.02" v-model.number="p3Form.balance" class="w-full accent-indigo-500 cursor-pointer">
-              <div class="flex justify-between text-[10px] text-slate-500">
-                <span>-0.6 (Emisora fuerte)</span>
-                <span>0.0 (Equilibrada)</span>
-                <span>+0.6 (Receptora fuerte)</span>
-              </div>
-            </div>
-
-            <button @click="executeP3Predict" :disabled="p3Loading" class="w-full py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-medium text-sm rounded-xl shadow-lg shadow-indigo-500/20 transition flex items-center justify-center space-x-2">
-              <i class="fa-solid" :class="p3Loading ? 'fa-spinner fa-spin' : 'fa-network-wired'"></i>
-              <span>{{ p3Loading ? 'Clasificando con Modelo P3...' : 'Asignar Cluster de Estación' }}</span>
-            </button>
-          </div>
-
-          <!-- Resultado y Radar Chart (6 cols) -->
-          <div class="lg:col-span-6 space-y-6">
-            <!-- Card de Cluster Asignado -->
-            <div class="bg-gradient-to-br from-slate-900 to-slate-900/90 border border-slate-800 rounded-2xl p-6">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Resultado de Clasificación</span>
-                <span v-if="p3Result" class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  HTTP 200 · {{ p3ResponseTime }}ms
-                </span>
-              </div>
-
-              <div class="mt-3">
                 <div v-if="p3Result" class="space-y-3">
-                  <div class="flex items-center space-x-3">
-                    <div class="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-black" :class="clusterBadgeColor">
+                  <div class="flex items-center space-x-3.5">
+                    <div class="w-12 h-12 rounded-lg flex items-center justify-center text-lg font-bold font-mono" :class="clusterBadgeStyle">
                       C{{ p3Result.predictions[0] }}
                     </div>
                     <div>
-                      <h4 class="text-lg font-bold text-white">{{ clusterName }}</h4>
-                      <p class="text-xs text-slate-400">Modelo: {{ p3Result.model.name }} (v{{ p3Result.model.version }})</p>
+                      <h3 class="text-base font-bold text-[var(--text-primary)]">{{ clusterName }}</h3>
+                      <p class="text-xs text-[var(--text-muted)]">Modelo: {{ p3Result.model.name }} · v{{ p3Result.model.version }}</p>
                     </div>
                   </div>
-                  <p class="text-xs text-slate-300 bg-slate-950/60 p-3 rounded-lg border border-slate-800 leading-relaxed">
+                  <p class="text-xs text-[var(--text-secondary)] leading-relaxed p-3.5 bg-[var(--bg-surface-subtle)] rounded-lg border border-[var(--border-color)]">
                     {{ clusterDescription }}
                   </p>
                 </div>
-                <div v-else class="text-slate-500 text-sm py-6 text-center">
-                  Selecciona el perfil de la estación y presiona <b>Asignar Cluster de Estación</b>.
+              </div>
+
+              <!-- Radar de Espacio Operacional -->
+              <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-5 shadow-sm space-y-3 transition-colors">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+                    Perfil Operacional Multivariable
+                  </h3>
+                  <span class="text-[11px] text-[var(--text-muted)]">Escala Normalizada</span>
+                </div>
+                <div class="h-56 relative flex items-center justify-center">
+                  <canvas id="p3RadarChart"></canvas>
                 </div>
               </div>
             </div>
+          </div>
+        </section>
 
-            <!-- Gráfico Radar de Perfil Operacional -->
-            <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
-              <div class="flex items-center justify-between mb-3">
-                <h4 class="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center">
-                  <i class="fa-solid fa-chart-pie text-indigo-400 mr-1.5"></i> Espacio Operacional (Normalizado)
-                </h4>
-                <span class="text-[10px] text-slate-500">Radar P3</span>
+
+        <!-- ================= SECCIÓN 3: HISTORIAL DE INFERENCIA ================= -->
+        <section v-show="activeTab === 'history'" class="space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
+            <div>
+              <h1 class="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Historial de Peticiones</h1>
+              <p class="text-sm text-[var(--text-secondary)] mt-1">Registro de inferencias y llamadas a endpoints en esta sesión.</p>
+            </div>
+            <button @click="requestLogs = []" class="px-3 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] bg-[var(--bg-surface)] hover:bg-[var(--bg-surface-subtle)] border border-[var(--border-color)] rounded-lg transition flex items-center space-x-1.5">
+              <i class="fa-solid fa-trash-can"></i>
+              <span>Limpiar historial</span>
+            </button>
+          </div>
+
+          <!-- Tabla de Logs -->
+          <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl overflow-hidden shadow-sm transition-colors">
+            <div v-if="requestLogs.length === 0" class="p-12 text-center text-xs text-[var(--text-muted)]">
+              No hay peticiones registradas aún. Realiza una inferencia para ver las trazas aquí.
+            </div>
+            <div v-else class="overflow-x-auto">
+              <table class="w-full text-left text-xs font-mono">
+                <thead class="bg-[var(--bg-surface-subtle)] text-[var(--text-muted)] uppercase tracking-wider border-b border-[var(--border-color)]">
+                  <tr>
+                    <th class="px-4 py-3 font-medium">Hora</th>
+                    <th class="px-4 py-3 font-medium">Método & Ruta</th>
+                    <th class="px-4 py-3 font-medium">Código</th>
+                    <th class="px-4 py-3 font-medium">Latencia</th>
+                    <th class="px-4 py-3 font-medium">Parámetros</th>
+                    <th class="px-4 py-3 font-medium">Resultado</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[var(--border-color)]">
+                  <tr v-for="(log, i) in requestLogs" :key="i" class="hover:bg-[var(--bg-surface-subtle)] transition">
+                    <td class="px-4 py-3 text-[var(--text-muted)]">{{ log.time }}</td>
+                    <td class="px-4 py-3 font-semibold text-blue-600 dark:text-blue-400">{{ log.method }} {{ log.endpoint }}</td>
+                    <td class="px-4 py-3">
+                      <span class="px-2 py-0.5 rounded text-[11px] font-bold tabular-nums" :class="log.status === 200 ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400' : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400'">
+                        {{ log.status }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3 text-[var(--text-secondary)] tabular-nums">{{ log.latency }} ms</td>
+                    <td class="px-4 py-3 text-[var(--text-muted)] truncate max-w-xs">{{ log.payload }}</td>
+                    <td class="px-4 py-3 text-[var(--text-primary)] font-sans font-medium truncate max-w-xs">{{ log.response }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ================= SECCIÓN 4: SUITE DE PRUEBAS AUTOMATIZADAS ================= -->
+        <section v-show="activeTab === 'tests'" class="space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
+            <div>
+              <h1 class="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Suite de Pruebas de Calidad</h1>
+              <p class="text-sm text-[var(--text-secondary)] mt-1">Verificación automática de endpoints, esquemas Pydantic y estabilidad de inferencia.</p>
+            </div>
+            <button @click="runTestSuite" :disabled="runningTests" class="h-10 px-4 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-slate-400 text-white font-medium text-xs rounded-lg shadow-sm transition flex items-center space-x-2">
+              <i class="fa-solid" :class="runningTests ? 'fa-spinner fa-spin' : 'fa-play'"></i>
+              <span>{{ runningTests ? 'Ejecutando suite...' : 'Ejecutar suite completa' }}</span>
+            </button>
+          </div>
+
+          <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl overflow-hidden shadow-sm transition-colors">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-[var(--bg-surface-subtle)] text-[var(--text-muted)] uppercase tracking-wider border-b border-[var(--border-color)] font-mono">
+                <tr>
+                  <th class="px-4 py-3 font-medium">#</th>
+                  <th class="px-4 py-3 font-medium">Caso de Prueba</th>
+                  <th class="px-4 py-3 font-medium">Endpoint</th>
+                  <th class="px-4 py-3 font-medium">Esperado</th>
+                  <th class="px-4 py-3 font-medium">Obtenido</th>
+                  <th class="px-4 py-3 font-medium">Latencia</th>
+                  <th class="px-4 py-3 font-medium">Dictamen</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-[var(--border-color)] font-mono">
+                <tr v-for="(t, i) in testCases" :key="i" class="hover:bg-[var(--bg-surface-subtle)] transition">
+                  <td class="px-4 py-3 text-[var(--text-muted)]">{{ i + 1 }}</td>
+                  <td class="px-4 py-3 font-sans font-medium text-[var(--text-primary)]">{{ t.name }}</td>
+                  <td class="px-4 py-3 text-blue-600 dark:text-blue-400">{{ t.method }} {{ t.path }}</td>
+                  <td class="px-4 py-3 text-[var(--text-muted)]">{{ t.expectedStatus }}</td>
+                  <td class="px-4 py-3">
+                    <span v-if="t.actualStatus" class="tabular-nums" :class="t.actualStatus === t.expectedStatus ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-rose-600 dark:text-rose-400 font-bold'">
+                      {{ t.actualStatus }}
+                    </span>
+                    <span v-else class="text-[var(--text-muted)]">—</span>
+                  </td>
+                  <td class="px-4 py-3 text-[var(--text-secondary)] tabular-nums">
+                    {{ t.duration ? `${t.duration} ms` : '—' }}
+                  </td>
+                  <td class="px-4 py-3 font-sans">
+                    <span v-if="t.state === 'running'" class="text-blue-600 flex items-center">
+                      <i class="fa-solid fa-spinner fa-spin mr-1.5"></i> En curso
+                    </span>
+                    <span v-else-if="t.state === 'pass'" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                      APROBADA
+                    </span>
+                    <span v-else-if="t.state === 'fail'" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800">
+                      FALLIDA
+                    </span>
+                    <span v-else class="text-[var(--text-muted)] text-[11px]">Pendiente</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+
+        <!-- ================= SECCIÓN 5: SALUD Y MONITOREO ================= -->
+        <section v-show="activeTab === 'health'" class="space-y-6">
+          <div class="pb-2">
+            <h1 class="text-2xl font-bold tracking-tight text-[var(--text-primary)]">Salud y Monitoreo de Servicios</h1>
+            <p class="text-sm text-[var(--text-secondary)] mt-1">Diagnóstico de estado, conectividad y latencias de los contenedores en producción.</p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Card 1: API Demanda P1 -->
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-5 shadow-sm space-y-3 transition-colors">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold uppercase text-[var(--text-secondary)]">API Demanda (P1)</span>
+                <span class="w-2.5 h-2.5 rounded-full" :class="p1Status === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'"></span>
               </div>
-              <div class="h-48 flex items-center justify-center">
-                <canvas id="p3RadarChart"></canvas>
+              <div>
+                <div class="text-lg font-bold text-[var(--text-primary)] font-mono tabular-nums">{{ p1Latency ? `${p1Latency} ms` : 'En línea' }}</div>
+                <div class="text-xs text-[var(--text-muted)] mt-0.5">models:/mibici-equipo12-p1-demanda@champion</div>
+              </div>
+              <div class="pt-2 border-t border-[var(--border-color)] flex justify-between text-xs text-[var(--text-secondary)]">
+                <span>Puerto: 8000</span>
+                <span>Ruta: /api/</span>
+              </div>
+            </div>
+
+            <!-- Card 2: API Clustering P3 -->
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-5 shadow-sm space-y-3 transition-colors">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold uppercase text-[var(--text-secondary)]">API Clustering (P3)</span>
+                <span class="w-2.5 h-2.5 rounded-full" :class="p3Status === 'ok' ? 'bg-emerald-500' : 'bg-rose-500'"></span>
+              </div>
+              <div>
+                <div class="text-lg font-bold text-[var(--text-primary)] font-mono tabular-nums">{{ p3Latency ? `${p3Latency} ms` : 'En línea' }}</div>
+                <div class="text-xs text-[var(--text-muted)] mt-0.5">models:/mibici-equipo12-p3-grupos@champion</div>
+              </div>
+              <div class="pt-2 border-t border-[var(--border-color)] flex justify-between text-xs text-[var(--text-secondary)]">
+                <span>Puerto: 8001</span>
+                <span>Ruta: /p3/</span>
+              </div>
+            </div>
+
+            <!-- Card 3: MLflow Model Registry -->
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-5 shadow-sm space-y-3 transition-colors">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold uppercase text-[var(--text-secondary)]">MLflow Server</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              </div>
+              <div>
+                <div class="text-lg font-bold text-[var(--text-primary)] font-mono">v3.16.1</div>
+                <div class="text-xs text-[var(--text-muted)] mt-0.5">tc5061-mlflow (net: tc5061-net)</div>
+              </div>
+              <div class="pt-2 border-t border-[var(--border-color)] flex justify-between text-xs text-[var(--text-secondary)]">
+                <span>Puerto: 5061</span>
+                <span>Backend: SQLite + MinIO</span>
+              </div>
+            </div>
+
+            <!-- Card 4: MinIO S3 Store -->
+            <div class="bg-[var(--bg-surface)] border border-[var(--border-color)] rounded-xl p-5 shadow-sm space-y-3 transition-colors">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold uppercase text-[var(--text-secondary)]">MinIO S3 Store</span>
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              </div>
+              <div>
+                <div class="text-lg font-bold text-[var(--text-primary)] font-mono">Activo</div>
+                <div class="text-xs text-[var(--text-muted)] mt-0.5">tc5061-minio (puerto 5062:9000)</div>
+              </div>
+              <div class="pt-2 border-t border-[var(--border-color)] flex justify-between text-xs text-[var(--text-secondary)]">
+                <span>Bucket: S3</span>
+                <span>SSL: Let's Encrypt</span>
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        </section>
 
+      </main>
 
-      <!-- ================= PESTAÑA 3: SUITE DE PRUEBAS AUTOMATIZADAS ================= -->
-      <div v-show="activeTab === 'tests'" class="space-y-6">
-        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 class="text-xl font-bold text-white flex items-center">
-              <i class="fa-solid fa-vial-circle-check text-emerald-400 mr-2"></i> Suite Automatizada de Verificación en Producción
-            </h2>
-            <p class="text-sm text-slate-400 mt-1">
-              Ejecuta pruebas de humo, chequeos de salud, validaciones de esquema Pydantic e inferencias de regresión y clustering directamente en el servidor.
-            </p>
-          </div>
-          <button @click="runTestSuite" :disabled="runningTests" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-white font-medium text-sm rounded-xl shadow-lg shadow-emerald-600/20 transition flex items-center justify-center space-x-2 shrink-0">
-            <i class="fa-solid" :class="runningTests ? 'fa-spinner fa-spin' : 'fa-play'"></i>
-            <span>{{ runningTests ? 'Ejecutando Pruebas...' : 'Ejecutar Suite Completa' }}</span>
-          </button>
-        </div>
-
-        <!-- Tabla de Pruebas -->
-        <div class="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs">
-              <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
-                <tr>
-                  <th class="px-4 py-3">#</th>
-                  <th class="px-4 py-3">Caso de Prueba</th>
-                  <th class="px-4 py-3">Endpoint & Método</th>
-                  <th class="px-4 py-3">Código Esperado</th>
-                  <th class="px-4 py-3">Código Obtenido</th>
-                  <th class="px-4 py-3">Latencia</th>
-                  <th class="px-4 py-3">Resultado</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-800 font-mono">
-                <tr v-for="(t, i) in testCases" :key="i" class="hover:bg-slate-800/40 transition">
-                  <td class="px-4 py-3 text-slate-400">{{ i + 1 }}</td>
-                  <td class="px-4 py-3 font-sans text-slate-200 font-medium">{{ t.name }}</td>
-                  <td class="px-4 py-3 text-sky-400">
-                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold mr-1" :class="t.method === 'GET' ? 'bg-sky-500/20 text-sky-300' : 'bg-indigo-500/20 text-indigo-300'">{{ t.method }}</span>
-                    <span>{{ t.path }}</span>
-                  </td>
-                  <td class="px-4 py-3 text-slate-400">{{ t.expectedStatus }}</td>
-                  <td class="px-4 py-3">
-                    <span v-if="t.actualStatus" :class="t.actualStatus === t.expectedStatus ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'">
-                      {{ t.actualStatus }}
-                    </span>
-                    <span v-else class="text-slate-600">—</span>
-                  </td>
-                  <td class="px-4 py-3 text-slate-400">
-                    <span v-if="t.duration">{{ t.duration }}ms</span>
-                    <span v-else class="text-slate-600">—</span>
-                  </td>
-                  <td class="px-4 py-3 font-sans">
-                    <span v-if="t.state === 'running'" class="text-amber-400 flex items-center">
-                      <i class="fa-solid fa-spinner fa-spin mr-1"></i> Ejecutando
-                    </span>
-                    <span v-else-if="t.state === 'pass'" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center w-max">
-                      <i class="fa-solid fa-check mr-1"></i> APROBADA
-                    </span>
-                    <span v-else-if="t.state === 'fail'" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center w-max">
-                      <i class="fa-solid fa-xmark mr-1"></i> FALLIDA
-                    </span>
-                    <span v-else class="text-slate-600">Pendiente</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-
-      <!-- ================= PESTAÑA 4: LOGS Y HISTORIAL ================= -->
-      <div v-show="activeTab === 'logs'" class="space-y-6">
-        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex items-center justify-between">
-          <div>
-            <h2 class="text-xl font-bold text-white flex items-center">
-              <i class="fa-solid fa-clock-rotate-left text-amber-400 mr-2"></i> Historial de Peticiones en Vivo
-            </h2>
-            <p class="text-sm text-slate-400 mt-1">
-              Registro en tiempo real de todas las inferencias y chequeos ejecutados durante esta sesión.
-            </p>
-          </div>
-          <button @click="requestLogs = []" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-lg border border-slate-700 transition flex items-center space-x-1">
-            <i class="fa-solid fa-trash-can mr-1"></i> Limpiar Historial
-          </button>
-        </div>
-
-        <div v-if="requestLogs.length === 0" class="bg-slate-900/40 border border-slate-800 rounded-2xl p-12 text-center text-slate-500 text-sm">
-          No hay peticiones registradas aún. Realiza una predicción en la pestaña P1 o P3 para ver el log en vivo.
-        </div>
-
-        <div v-else class="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden">
-          <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs font-mono">
-              <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800">
-                <tr>
-                  <th class="px-4 py-3">Timestamp</th>
-                  <th class="px-4 py-3">Endpoint</th>
-                  <th class="px-4 py-3">Status</th>
-                  <th class="px-4 py-3">Latencia</th>
-                  <th class="px-4 py-3">Payload</th>
-                  <th class="px-4 py-3">Respuesta</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-800">
-                <tr v-for="(log, idx) in requestLogs" :key="idx" class="hover:bg-slate-800/40 transition">
-                  <td class="px-4 py-2.5 text-slate-400">{{ log.time }}</td>
-                  <td class="px-4 py-2.5 text-sky-400">{{ log.method }} {{ log.endpoint }}</td>
-                  <td class="px-4 py-2.5">
-                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold" :class="log.status >= 200 && log.status < 300 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'">
-                      {{ log.status }}
-                    </span>
-                  </td>
-                  <td class="px-4 py-2.5 text-slate-300">{{ log.latency }}ms</td>
-                  <td class="px-4 py-2.5 text-slate-400 truncate max-w-xs">{{ log.payload }}</td>
-                  <td class="px-4 py-2.5 text-slate-200 truncate max-w-xs font-sans">{{ log.response }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-    </main>
-
-    <!-- Footer -->
-    <footer class="border-t border-slate-800 bg-slate-950 py-6 text-xs text-slate-500">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <!-- FOOTER DISCRETO -->
+      <footer class="h-14 border-t border-[var(--border-color)] bg-[var(--bg-surface)] px-6 flex items-center justify-between text-xs text-[var(--text-muted)] shrink-0 transition-colors">
         <div>
-          <span>Proyecto MiBici MLOps · Tec de Monterrey (TC5061) · Equipo 12</span>
+          MiBici MLOps &middot; Tecnológico de Monterrey (TC5061) &middot; Equipo 12
         </div>
-        <div class="flex items-center space-x-4 text-slate-400">
+        <div class="flex items-center space-x-3">
           <span>Docker OCI</span>
           <span>&bull;</span>
           <span>FastAPI</span>
           <span>&bull;</span>
-          <span>MLflow Model Registry</span>
-          <span>&bull;</span>
-          <span>Scikit-Learn</span>
+          <span>MLflow Registry (champion)</span>
         </div>
-      </div>
-    </footer>
+      </footer>
+
+    </div>
 
   </div>
 
-  <!-- Script Aplicación Vue 3 y Chart.js -->
+  <!-- Script Aplicación Vue 3 y Charts Adaptables -->
   <script>
     const { createApp, ref, computed, onMounted, nextTick } = Vue;
 
     createApp({
       setup() {
+        const isDark = ref(false);
         const activeTab = ref('p1');
+        const activePreset = ref('laboral');
+        const codeSnippetType = ref('curl');
+        const codeCopied = ref(false);
+
+        // Salud de APIs
         const checkingHealth = ref(false);
         const p1Status = ref('pending');
         const p1Latency = ref(null);
@@ -672,15 +900,15 @@
         const p3Latency = ref(null);
         const requestLogs = ref([]);
 
-        // Formulario P1
+        // Formulario P1 (Regresión)
         const p1Form = ref({
-          trips_lag_1: 45.0,
-          trips_lag_7: 40.0,
-          trips_roll_mean_7: 42.5,
-          is_weekend: 0,
           origen_id: 42,
-          dayofweek: 2, // Miércoles
-          month: 10
+          month: 10,
+          dayofweek: 1, // Martes
+          is_weekend: 0,
+          trips_lag_1: 82.0,
+          trips_lag_7: 78.0,
+          trips_roll_mean_7: 80.5,
         });
 
         const p1Loading = ref(false);
@@ -689,16 +917,15 @@
         const p1Error = ref(null);
         const p1StatusCode = ref(null);
         const p1ResponseTime = ref(null);
-        const p1Copied = ref(false);
 
-        let p1ChartInstance = null;
+        let p1HistoricalChartInstance = null;
         let p1WeeklyChartInstance = null;
 
-        // Formulario P3
+        // Formulario P3 (Clustering) con soporte numérico preciso
         const p3Form = ref({
-          prop_fin_semana: 0.19,
-          log_viajes_dia: 3.91,
-          balance: 0.02
+          prop_fin_semana: 0.12,
+          log_viajes_dia: 4.35,
+          balance: 0.15
         });
 
         const p3Loading = ref(false);
@@ -706,7 +933,7 @@
         const p3ResponseTime = ref(null);
         let p3RadarChartInstance = null;
 
-        // Suite de Pruebas
+        // Suite de Pruebas Automatizadas
         const runningTests = ref(false);
         const testCases = ref([
           { name: 'Healthcheck P1 (Demanda API)', method: 'GET', path: '/api/health', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle' },
@@ -714,39 +941,75 @@
           { name: 'Validación Pydantic P1 (Valor Negativo)', method: 'POST', path: '/api/predict', expectedStatus: 422, actualStatus: null, duration: null, state: 'idle', body: { trips_lag_1: -10, trips_lag_7: 15 } },
           { name: 'Healthcheck P3 (Clustering API)', method: 'GET', path: '/p3/healthz', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle' },
           { name: 'Inferencia Válida P3 (Estación)', method: 'POST', path: '/p3/predict', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle', body: { instances: [{ prop_fin_semana: 0.20, log_viajes_dia: 3.8, balance: 0.02 }] } },
-          { name: 'Inferencia Lote P3 (Múltiples Estaciones)', method: 'POST', path: '/p3/predict', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle', body: { instances: [{ prop_fin_semana: 0.15, log_viajes_dia: 4.1, balance: -0.1 }, { prop_fin_semana: 0.45, log_viajes_dia: 3.2, balance: 0.05 }] } }
+          { name: 'Inferencia en Lote P3 (Múltiples Estaciones)', method: 'POST', path: '/p3/predict', expectedStatus: 200, actualStatus: null, duration: null, state: 'idle', body: { instances: [{ prop_fin_semana: 0.15, log_viajes_dia: 4.1, balance: -0.1 }, { prop_fin_semana: 0.45, log_viajes_dia: 3.2, balance: 0.05 }] } }
         ]);
 
-        const onDayChange = () => {
-          p1Form.value.is_weekend = (p1Form.value.dayofweek >= 5) ? 1 : 0;
-          updateCharts();
-        };
-
-        const p1CurlCommand = computed(() => {
-          return `curl -k -X POST https://161.132.54.170/api/predict \\
-  -H "Content-Type: application/json" \\
-  -d '${JSON.stringify(p1Form.value)}'`;
+        const currentTabLabel = computed(() => {
+          switch (activeTab.value) {
+            case 'p1': return 'Predicción de Demanda Diaria (P1)';
+            case 'p3': return 'Clustering de Estaciones (P3)';
+            case 'history': return 'Historial de Inferencia';
+            case 'tests': return 'Suite de Pruebas Automatizadas';
+            case 'health': return 'Salud de Servicios y Monitoreo';
+            default: return 'Panel Principal';
+          }
         });
 
-        const copyP1Curl = () => {
-          navigator.clipboard.writeText(p1CurlCommand.value);
-          p1Copied.value = true;
-          setTimeout(() => p1Copied.value = false, 2000);
+        // Derivación Automática de is_weekend a partir de dayofweek
+        const onDayChange = () => {
+          p1Form.value.is_weekend = (p1Form.value.dayofweek >= 5) ? 1 : 0;
+          onParamChange();
         };
 
+        const onParamChange = () => {
+          activePreset.value = null;
+        };
+
+        const onP3ParamChange = () => {
+          updateRadarChart();
+        };
+
+        // Generador de Código cURL / Python
+        const currentCodeSnippet = computed(() => {
+          if (codeSnippetType.value === 'curl') {
+            return `curl -k -X POST https://161.132.54.170/api/predict \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(p1Form.value)}'`;
+          } else {
+            return `import requests
+
+payload = ${JSON.stringify(p1Form.value, null, 2)}
+resp = requests.post(
+    "https://161.132.54.170/api/predict",
+    json=payload,
+    verify=False
+)
+print("Predicción:", resp.json())`;
+          }
+        });
+
+        const copyCodeSnippet = () => {
+          navigator.clipboard.writeText(currentCodeSnippet.value);
+          codeCopied.value = true;
+          setTimeout(() => codeCopied.value = false, 2000);
+        };
+
+        // Presets P1
         const applyP1Preset = (type) => {
+          activePreset.value = type;
           if (type === 'laboral') {
-            p1Form.value = { trips_lag_1: 82.0, trips_lag_7: 78.0, trips_roll_mean_7: 80.5, is_weekend: 0, origen_id: 42, dayofweek: 1, month: 10 };
+            p1Form.value = { origen_id: 42, month: 10, dayofweek: 1, is_weekend: 0, trips_lag_1: 82.0, trips_lag_7: 78.0, trips_roll_mean_7: 80.5 };
           } else if (type === 'recreativo') {
-            p1Form.value = { trips_lag_1: 52.0, trips_lag_7: 48.0, trips_roll_mean_7: 45.0, is_weekend: 1, origen_id: 42, dayofweek: 6, month: 10 };
+            p1Form.value = { origen_id: 42, month: 10, dayofweek: 6, is_weekend: 1, trips_lag_1: 52.0, trips_lag_7: 48.0, trips_roll_mean_7: 45.0 };
           } else if (type === 'lluvioso') {
-            p1Form.value = { trips_lag_1: 14.0, trips_lag_7: 12.0, trips_roll_mean_7: 15.0, is_weekend: 0, origen_id: 120, dayofweek: 0, month: 8 };
+            p1Form.value = { origen_id: 120, month: 8, dayofweek: 0, is_weekend: 0, trips_lag_1: 14.0, trips_lag_7: 12.0, trips_roll_mean_7: 15.0 };
           } else if (type === 'invalido') {
-            p1Form.value = { trips_lag_1: -25.0, trips_lag_7: 10.0, trips_roll_mean_7: 15.0, is_weekend: 0, origen_id: 0, dayofweek: 8, month: 14 };
+            p1Form.value = { origen_id: 0, month: 14, dayofweek: 8, is_weekend: 0, trips_lag_1: -25.0, trips_lag_7: 10.0, trips_roll_mean_7: 15.0 };
           }
           executeP1Predict();
         };
 
+        // Presets P3
         const applyP3Preset = (type) => {
           if (type === 'corporativo') {
             p3Form.value = { prop_fin_semana: 0.12, log_viajes_dia: 4.35, balance: 0.15 };
@@ -762,32 +1025,32 @@
           if (!p3Result.value) return '';
           const c = p3Result.value.predictions[0];
           if (c === 0) return 'Cluster 0 · Residencial Emisora';
-          if (c === 1) return 'Cluster 1 · Recreativa / Vía RecreActiva';
-          if (c === 2) return 'Cluster 2 · Céntrica de Alto Tráfico';
+          if (c === 1) return 'Cluster 1 · Recreativo / Vía RecreActiva';
+          if (c === 2) return 'Cluster 2 · Corporativo / Céntrico';
           return `Cluster ${c}`;
         });
 
-        const clusterBadgeColor = computed(() => {
-          if (!p3Result.value) return 'bg-slate-800 text-slate-300';
+        const clusterBadgeStyle = computed(() => {
+          if (!p3Result.value) return 'bg-slate-100 text-slate-700';
           const c = p3Result.value.predictions[0];
-          if (c === 0) return 'bg-amber-500/20 text-amber-400 border border-amber-500/30';
-          if (c === 1) return 'bg-purple-500/20 text-purple-400 border border-purple-500/30';
-          return 'bg-sky-500/20 text-sky-400 border border-sky-500/30';
+          if (c === 0) return 'bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800';
+          if (c === 1) return 'bg-purple-100 dark:bg-purple-950/50 text-purple-800 dark:text-purple-300 border border-purple-300 dark:border-purple-800';
+          return 'bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-800';
         });
 
         const clusterDescription = computed(() => {
           if (!p3Result.value) return '';
           const c = p3Result.value.predictions[0];
           if (c === 0) {
-            return 'Estaciones ubicadas en zonas residenciales o periferia con fuerte salida matutina hacia centros de empleo y balance predominantemente negativo. Requieren inyección matutina de bicicletas.';
+            return 'Estaciones ubicadas en periferia o zonas residenciales con fuerte flujo emisor matutino hacia centros laborales y balance negativo. Requieren inyección temprana de bicicletas.';
           } else if (c === 1) {
-            return 'Estaciones con alta concentración de viajes durante sábados y domingos (parques, corredores culturales o Vía RecreActiva). Uso predominantemente recreativo con flujo relajado.';
+            return 'Estaciones con alta afluencia concentrada en sábados y domingos (parques y Paseo Chapultepec). Uso predominantemente lúdico sin saturación en horas laborales.';
           } else {
-            return 'Estaciones céntricas, corredores corporativos o nodos intermodales con alto volumen de viajes diarios de lunes a viernes y flujo balanceado o receptor neto. Nodos clave de la red.';
+            return 'Nodos céntricos y corredores corporativos con elevado volumen de viajes de lunes a viernes y flujo balanceado o receptor neto. Nodos estratégicos de la red.';
           }
         });
 
-        // Llamada a la API P1
+        // Ejecutar Inferencia P1
         const executeP1Predict = async () => {
           p1Loading.value = true;
           p1Error.value = null;
@@ -807,13 +1070,13 @@
             if (resp.ok) {
               p1Success.value = true;
               p1Result.value = data;
-              logRequest('POST', '/api/predict', resp.status, p1ResponseTime.value, JSON.stringify(p1Form.value), `Predicción: ${data.prediction.toFixed(2)} viajes`);
+              logRequest('POST', '/api/predict', resp.status, p1ResponseTime.value, JSON.stringify(p1Form.value), `${data.prediction.toFixed(1)} viajes`);
               updateCharts();
             } else {
               p1Success.value = false;
               p1Result.value = null;
               p1Error.value = data.detail ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail)) : 'Error en la petición';
-              logRequest('POST', '/api/predict', resp.status, p1ResponseTime.value, JSON.stringify(p1Form.value), `Error: ${resp.status}`);
+              logRequest('POST', '/api/predict', resp.status, p1ResponseTime.value, JSON.stringify(p1Form.value), `HTTP ${resp.status}`);
             }
           } catch (err) {
             p1Success.value = false;
@@ -823,7 +1086,7 @@
           }
         };
 
-        // Llamada a la API P3
+        // Ejecutar Inferencia P3
         const executeP3Predict = async () => {
           p3Loading.value = true;
           const t0 = performance.now();
@@ -841,7 +1104,7 @@
 
             if (resp.ok) {
               p3Result.value = data;
-              logRequest('POST', '/p3/predict', resp.status, p3ResponseTime.value, JSON.stringify(payload), `Cluster: ${data.predictions[0]}`);
+              logRequest('POST', '/p3/predict', resp.status, p3ResponseTime.value, JSON.stringify(payload), `Cluster ${data.predictions[0]}`);
               updateRadarChart();
             }
           } catch (err) {
@@ -851,7 +1114,7 @@
           }
         };
 
-        // Check Health
+        // Chequeo de Salud de APIs
         const checkHealth = async () => {
           checkingHealth.value = true;
           try {
@@ -890,7 +1153,7 @@
               test.duration = Math.round(performance.now() - t0);
               test.actualStatus = resp.status;
               test.state = (resp.status === test.expectedStatus) ? 'pass' : 'fail';
-            } catch (e) {
+            } catch {
               test.duration = Math.round(performance.now() - t0);
               test.actualStatus = 0;
               test.state = 'fail';
@@ -906,28 +1169,107 @@
           if (requestLogs.value.length > 50) requestLogs.value.pop();
         };
 
-        // Inicialización y Actualización de Gráficos (Chart.js)
+        // Configuración de Tema Claro / Oscuro con Adapter de Charts
+        const toggleTheme = () => {
+          isDark.value = !isDark.value;
+          if (isDark.value) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.classList.remove('light');
+            document.documentElement.setAttribute('data-theme', 'dark');
+            localStorage.setItem('mibici_theme', 'dark');
+          } else {
+            document.documentElement.classList.add('light');
+            document.documentElement.classList.remove('dark');
+            document.documentElement.setAttribute('data-theme', 'light');
+            localStorage.setItem('mibici_theme', 'light');
+          }
+          applyChartThemes();
+        };
+
+        const getChartColors = () => {
+          const dark = isDark.value;
+          return {
+            grid: dark ? '#1E293B' : '#E2E8F0',
+            text: dark ? '#94A3B8' : '#64748B',
+            barHistorical: dark ? '#475569' : '#94A3B8',
+            barPrediction: dark ? '#34D399' : '#059669',
+            lineBorder: '#2563EB',
+            lineFill: dark ? 'rgba(56, 189, 248, 0.15)' : 'rgba(37, 99, 235, 0.08)',
+            radarBorder: dark ? '#38BDF8' : '#2563EB',
+            radarFill: dark ? 'rgba(56, 189, 248, 0.25)' : 'rgba(37, 99, 235, 0.15)',
+          };
+        };
+
+        const applyChartThemes = () => {
+          const colors = getChartColors();
+          if (p1HistoricalChartInstance) {
+            p1HistoricalChartInstance.options.scales.x.ticks.color = colors.text;
+            p1HistoricalChartInstance.options.scales.y.ticks.color = colors.text;
+            p1HistoricalChartInstance.options.scales.y.grid.color = colors.grid;
+            p1HistoricalChartInstance.data.datasets[0].backgroundColor = [
+              colors.barHistorical,
+              colors.barHistorical,
+              '#3B82F6',
+              colors.barPrediction
+            ];
+            p1HistoricalChartInstance.update();
+          }
+          if (p1WeeklyChartInstance) {
+            p1WeeklyChartInstance.options.scales.x.ticks.color = colors.text;
+            p1WeeklyChartInstance.options.scales.y.ticks.color = colors.text;
+            p1WeeklyChartInstance.options.scales.y.grid.color = colors.grid;
+            p1WeeklyChartInstance.data.datasets[0].borderColor = colors.lineBorder;
+            p1WeeklyChartInstance.data.datasets[0].backgroundColor = colors.lineFill;
+            p1WeeklyChartInstance.update();
+          }
+          if (p3RadarChartInstance) {
+            p3RadarChartInstance.options.scales.r.pointLabels.color = colors.text;
+            p3RadarChartInstance.options.scales.r.grid.color = colors.grid;
+            p3RadarChartInstance.options.scales.r.angleLines.color = colors.grid;
+            p3RadarChartInstance.data.datasets[0].borderColor = colors.radarBorder;
+            p3RadarChartInstance.data.datasets[0].backgroundColor = colors.radarFill;
+            p3RadarChartInstance.update();
+          }
+        };
+
         const initCharts = () => {
+          const colors = getChartColors();
+
           // Gráfico 1: Inercia vs Predicción
-          const ctx1 = document.getElementById('p1Chart');
+          const ctx1 = document.getElementById('p1HistoricalChart');
           if (ctx1) {
-            p1ChartInstance = new Chart(ctx1, {
+            p1HistoricalChartInstance = new Chart(ctx1, {
               type: 'bar',
               data: {
-                labels: ['Lag 7 (hace 7d)', 'Media Móvil 7d', 'Lag 1 (ayer)', 'Predicción P1'],
+                labels: ['Hace 7 días', 'Media 7d', 'Ayer', 'Predicción P1'],
                 datasets: [{
                   data: [p1Form.value.trips_lag_7, p1Form.value.trips_roll_mean_7, p1Form.value.trips_lag_1, 0],
-                  backgroundColor: ['#475569', '#64748b', '#38bdf8', '#10b981'],
-                  borderRadius: 6
+                  backgroundColor: [colors.barHistorical, colors.barHistorical, '#3B82F6', colors.barPrediction],
+                  borderRadius: 4,
+                  barThickness: 28,
                 }]
               },
               options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (c) => ` ${c.parsed.y} viajes/día`
+                    }
+                  }
+                },
                 scales: {
-                  y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } },
-                  x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+                  y: {
+                    beginAtZero: true,
+                    grid: { color: colors.grid },
+                    ticks: { color: colors.text, font: { family: 'Inter', size: 11 } }
+                  },
+                  x: {
+                    grid: { display: false },
+                    ticks: { color: colors.text, font: { family: 'Inter', size: 11 } }
+                  }
                 }
               }
             });
@@ -939,25 +1281,40 @@
             p1WeeklyChartInstance = new Chart(ctx2, {
               type: 'line',
               data: {
-                labels: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+                labels: ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'],
                 datasets: [{
                   label: 'Demanda Estimada',
-                  data: [42, 45, 46, 44, 48, 28, 25],
-                  borderColor: '#6366f1',
-                  backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                  data: [78, 82, 81, 79, 85, 45, 40],
+                  borderColor: colors.lineBorder,
+                  backgroundColor: colors.lineFill,
                   fill: true,
-                  tension: 0.35,
-                  pointBackgroundColor: '#818cf8',
-                  pointRadius: 4
+                  tension: 0.3,
+                  pointRadius: 4,
+                  pointBackgroundColor: colors.lineBorder,
+                  borderWidth: 2
                 }]
               },
               options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (c) => ` ${c.parsed.y.toFixed(1)} viajes/día`
+                    }
+                  }
+                },
                 scales: {
-                  y: { grid: { color: '#1e293b' }, ticks: { color: '#94a3b8' } },
-                  x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+                  y: {
+                    beginAtZero: true,
+                    grid: { color: colors.grid },
+                    ticks: { color: colors.text, font: { family: 'Inter', size: 11 } }
+                  },
+                  x: {
+                    grid: { display: false },
+                    ticks: { color: colors.text, font: { family: 'Inter', size: 11 } }
+                  }
                 }
               }
             });
@@ -969,13 +1326,15 @@
             p3RadarChartInstance = new Chart(ctx3, {
               type: 'radar',
               data: {
-                labels: ['Fin de Semana', 'Volumen Diario', 'Balance Llegadas'],
+                labels: ['Fin de Semana (%)', 'Volumen Diario', 'Balance Llegadas'],
                 datasets: [{
                   label: 'Perfil Estación',
-                  data: [p3Form.value.prop_fin_semana * 100, (p3Form.value.log_viajes_dia / 5) * 100, ((p3Form.value.balance + 0.6) / 1.2) * 100],
-                  borderColor: '#818cf8',
-                  backgroundColor: 'rgba(129, 140, 248, 0.25)',
-                  pointBackgroundColor: '#c084fc'
+                  data: [p3Form.value.prop_fin_semana * 100, (p3Form.value.log_viajes_dia / 6.0) * 100, ((p3Form.value.balance + 1.0) / 2.0) * 100],
+                  borderColor: colors.radarBorder,
+                  backgroundColor: colors.radarFill,
+                  pointBackgroundColor: colors.radarBorder,
+                  pointRadius: 4,
+                  borderWidth: 2
                 }]
               },
               options: {
@@ -984,9 +1343,11 @@
                 plugins: { legend: { display: false } },
                 scales: {
                   r: {
-                    angleLines: { color: '#334155' },
-                    grid: { color: '#1e293b' },
-                    pointLabels: { color: '#94a3b8', font: { size: 10 } },
+                    min: 0,
+                    max: 100,
+                    grid: { color: colors.grid },
+                    angleLines: { color: colors.grid },
+                    pointLabels: { color: colors.text, font: { family: 'Inter', size: 11, weight: '500' } },
                     ticks: { display: false }
                   }
                 }
@@ -996,29 +1357,40 @@
         };
 
         const updateCharts = () => {
-          if (p1ChartInstance) {
+          const colors = getChartColors();
+          if (p1HistoricalChartInstance) {
             const pred = p1Result.value ? p1Result.value.prediction : 0;
-            p1ChartInstance.data.datasets[0].data = [
+            p1HistoricalChartInstance.data.datasets[0].data = [
               p1Form.value.trips_lag_7,
               p1Form.value.trips_roll_mean_7,
               p1Form.value.trips_lag_1,
               pred
             ];
-            p1ChartInstance.update();
+            p1HistoricalChartInstance.data.datasets[0].backgroundColor = [
+              colors.barHistorical,
+              colors.barHistorical,
+              '#3B82F6',
+              colors.barPrediction
+            ];
+            p1HistoricalChartInstance.update();
           }
 
           if (p1WeeklyChartInstance && p1Result.value) {
             const base = p1Result.value.prediction;
-            const simulated = [
-              Math.max(0, base * 0.95),
-              Math.max(0, base * 1.02),
-              Math.max(0, base * 1.01),
-              Math.max(0, base * 0.98),
-              Math.max(0, base * 1.08),
-              Math.max(0, base * 0.62),
-              Math.max(0, base * 0.55)
+            const isWknd = p1Form.value.is_weekend;
+            const wkndFactor = isWknd ? 1.0 : 0.55;
+            const weekdayFactor = isWknd ? 1.4 : 1.0;
+
+            const sim = [
+              Math.max(0, base * 0.95 * weekdayFactor),
+              Math.max(0, base * 1.02 * weekdayFactor),
+              Math.max(0, base * 1.00 * weekdayFactor),
+              Math.max(0, base * 0.98 * weekdayFactor),
+              Math.max(0, base * 1.08 * weekdayFactor),
+              Math.max(0, base * 0.65 * wkndFactor),
+              Math.max(0, base * 0.55 * wkndFactor)
             ];
-            p1WeeklyChartInstance.data.datasets[0].data = simulated;
+            p1WeeklyChartInstance.data.datasets[0].data = sim;
             p1WeeklyChartInstance.update();
           }
         };
@@ -1027,14 +1399,21 @@
           if (p3RadarChartInstance) {
             p3RadarChartInstance.data.datasets[0].data = [
               p3Form.value.prop_fin_semana * 100,
-              (p3Form.value.log_viajes_dia / 5) * 100,
-              ((p3Form.value.balance + 0.6) / 1.2) * 100
+              (p3Form.value.log_viajes_dia / 6.0) * 100,
+              ((p3Form.value.balance + 1.0) / 2.0) * 100
             ];
             p3RadarChartInstance.update();
           }
         };
 
         onMounted(() => {
+          const savedTheme = localStorage.getItem('mibici_theme');
+          if (savedTheme === 'dark') {
+            isDark.value = true;
+          } else {
+            isDark.value = false;
+          }
+
           nextTick(() => {
             initCharts();
             checkHealth();
@@ -1044,7 +1423,13 @@
         });
 
         return {
+          isDark,
           activeTab,
+          activePreset,
+          codeSnippetType,
+          codeCopied,
+          currentTabLabel,
+          currentCodeSnippet,
           checkingHealth,
           p1Status,
           p1Latency,
@@ -1058,25 +1443,26 @@
           p1Error,
           p1StatusCode,
           p1ResponseTime,
-          p1CurlCommand,
-          p1Copied,
-          copyP1Curl,
-          onDayChange,
-          applyP1Preset,
-          executeP1Predict,
           p3Form,
           p3Loading,
           p3Result,
           p3ResponseTime,
           clusterName,
-          clusterBadgeColor,
+          clusterBadgeStyle,
           clusterDescription,
+          testCases,
+          runningTests,
+          toggleTheme,
+          onDayChange,
+          onParamChange,
+          onP3ParamChange,
+          applyP1Preset,
           applyP3Preset,
+          executeP1Predict,
           executeP3Predict,
           checkHealth,
-          runningTests,
-          testCases,
-          runTestSuite
+          runTestSuite,
+          copyCodeSnippet
         };
       }
     }).mount('#app');

@@ -5,7 +5,12 @@ import json
 from pathlib import Path
 import subprocess
 
-from mi_bici_experiment.config import MI_BICI_CSVS, PROJ_ROOT, RAW_DATA_DIR
+from mi_bici_experiment.config import (
+    MI_BICI_CSVS,
+    MI_BICI_PARQUET_EXCLUDED_CSVS,
+    PROJ_ROOT,
+    RAW_DATA_DIR,
+)
 
 MANIFEST_PATH = PROJ_ROOT / "data_manifest.json"
 
@@ -30,6 +35,8 @@ def version_datos() -> str:
     total = hashlib.sha256()
     for url in MI_BICI_CSVS:
         ruta = RAW_DATA_DIR / url.rsplit("/", 1)[-1]
+        if ruta.name in MI_BICI_PARQUET_EXCLUDED_CSVS:
+            continue
         h = hashlib.sha256()
         with open(ruta, "rb") as f:
             for bloque in iter(lambda: f.read(1 << 20), b""):

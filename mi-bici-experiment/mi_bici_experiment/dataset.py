@@ -15,6 +15,7 @@ import certifi
 from mi_bici_experiment.config import (
     INTERIM_DATA_DIR,
     MI_BICI_CSVS,
+    MI_BICI_PARQUET_EXCLUDED_CSVS,
     NOMENCLATURA_CSV,
     PROJ_ROOT,
     RAW_DATA_DIR,
@@ -31,6 +32,15 @@ class DatasetManager:
     )
     # Trip timestamp columns parsed and truncated to day boundaries.
     DATETIME_COLUMNS = ("Inicio_del_viaje", "Fin_del_viaje")
+
+    @staticmethod
+    def _parquet_source_csvs(input_path: Path) -> list[Path]:
+        """List downloaded trip CSVs selected for the merged Parquet."""
+        return sorted(
+            path
+            for path in input_path.glob("datos_abiertos_*.csv")
+            if path.name not in MI_BICI_PARQUET_EXCLUDED_CSVS
+        )
 
     @staticmethod
     def _sha256_file(path: Path) -> str:
@@ -85,8 +95,8 @@ class DatasetManager:
         output_path = Path(output_path)
         manifest_path = Path(manifest_path)
 
-        # Hash every source CSV and the generated Parquet file.
-        source_files = sorted(input_path.glob("datos_abiertos_*.csv"))
+        # Hash only CSVs that contributed to the Parquet, plus the station catalog.
+        source_files = self._parquet_source_csvs(input_path)
         nomenclature_path = input_path / NOMENCLATURA_CSV.name
         files = [
             {
@@ -219,9 +229,9 @@ class DatasetManager:
         if not input_path.is_dir():
             raise NotADirectoryError(f"Trip data directory does not exist: {input_path}")
 
-        csv_files = sorted(input_path.glob("datos_abiertos_*.csv"))
+        csv_files = self._parquet_source_csvs(input_path)
         if not csv_files:
-            raise FileNotFoundError(f"No monthly trip CSV files found in {input_path}")
+            raise FileNotFoundError(f"No monthly trip CSV files selected for Parquet in {input_path}")
 
         monthly_trips = []
         for csv_file in csv_files:

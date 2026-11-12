@@ -797,12 +797,14 @@ La siguiente captura evidencia la API REST empaquetada en el contenedor ejecutá
 
 ## Monitoreo de P1 con Evidently
 
-El punto de entrada `monitor` de MLflow genera los datos mensuales de P1 y dos pruebas de deriva de datos con Evidently:
+El punto de entrada `monitor` de MLflow genera los datos mensuales de P1, dos pruebas de deriva y tres reportes de calidad de datos con Evidently:
 
 1. **Histórico completo frente al mes nuevo:** usa como referencia `mi-bici-experiment/data/processed/p1_train.parquet`, que contiene las filas de entrenamiento, validación y prueba de P1.
 2. **Mismo mes del año anterior frente al mes nuevo:** por ejemplo, octubre de 2025 frente a octubre de 2026. El mes del año anterior se usa como referencia.
 
 Ambas pruebas comparan las siete variables de entrada del modelo: `trips_lag_1`, `trips_lag_7`, `trips_roll_mean_7`, `is_weekend`, `origen_id`, `dayofweek` y `month`. El objetivo `trips` no participa en las pruebas de deriva. Evidently muestra el resultado por variable y cuántas de las siete presentan deriva; esto describe cambios en los datos de entrada, no mide el rendimiento predictivo del modelo.
+
+Los reportes de calidad usan `DataSummaryPreset` por separado para los tres conjuntos que intervienen en las comparaciones: histórico completo (entrenamiento, validación y prueba), mes nuevo y mismo mes del año anterior. Cada uno resume las siete variables de entrada y el objetivo `trips`, con estadísticas de filas, columnas, valores faltantes, duplicados y distribuciones por variable.
 
 Desde la raíz del repositorio, con el entorno virtual de `mi-bici-experiment` activado, ejecuta en PowerShell:
 
@@ -816,14 +818,17 @@ Por defecto se procesa `mi-bici-experiment/data/raw/datos_abiertos_2026_10.csv`.
 mlflow run . -e monitor -P monthly_csv=data/raw/datos_abiertos_2026_09.csv --env-manager local
 ```
 
-El valor de `monthly_csv` es relativo a `mi-bici-experiment` y también admite una ruta absoluta. El CSV del mes anterior debe estar en la misma carpeta para calcular los rezagos de los primeros siete días. El proceso se detiene si falta ese historial o si el CSV nuevo no cubre todo el mes. Si faltan el CSV del mismo mes del año anterior o su historial de rezagos, se genera el reporte del histórico completo y se imprime por qué se omitió la segunda prueba.
+El valor de `monthly_csv` es relativo a `mi-bici-experiment` y también admite una ruta absoluta. El CSV del mes anterior debe estar en la misma carpeta para calcular los rezagos de los primeros siete días. El proceso se detiene si falta ese historial o si el CSV nuevo no cubre todo el mes. Si faltan el CSV del mismo mes del año anterior o su historial de rezagos, se generan los reportes de calidad del histórico y del mes nuevo, junto con la primera prueba de deriva; se imprime por qué se omitieron los reportes del año anterior.
 
 Los datos generados se guardan en `mi-bici-experiment/data/processed/p1_YYYY_MM.parquet`. Para octubre de 2026, los reportes HTML y JSON quedan en:
 
-| Comparación | Reportes |
+| Reporte | Archivos |
 |-------------|----------|
 | Histórico completo frente a octubre de 2026 | `mi-bici-experiment/reports/p1_data_drift.html` y `mi-bici-experiment/reports/p1_data_drift.json` |
 | Octubre de 2025 frente a octubre de 2026 | `mi-bici-experiment/reports/p1_data_drift_2025_10_vs_2026_10.html` y `mi-bici-experiment/reports/p1_data_drift_2025_10_vs_2026_10.json` |
+| Calidad del histórico completo | `mi-bici-experiment/reports/p1_data_quality_train.html` y `mi-bici-experiment/reports/p1_data_quality_train.json` |
+| Calidad de octubre de 2026 | `mi-bici-experiment/reports/p1_data_quality_2026_10.html` y `mi-bici-experiment/reports/p1_data_quality_2026_10.json` |
+| Calidad de octubre de 2025 | `mi-bici-experiment/reports/p1_data_quality_2025_10.html` y `mi-bici-experiment/reports/p1_data_quality_2025_10.json` |
 
 Abre los archivos HTML para inspeccionar las distribuciones y los resultados por variable. Los archivos JSON contienen los mismos resultados para análisis automatizado. El comando deja estos archivos en el repositorio; no los adjunta como artefactos de la corrida de MLflow.
 

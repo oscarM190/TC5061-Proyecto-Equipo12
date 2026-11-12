@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -120,11 +121,12 @@ def test_monthly_dataset_requires_previous_month_history(tmp_path):
         save_p1_monthly_dataset(monthly_csv, tmp_path / "monthly.parquet", stations_path)
 
 
-# Create the current drift report and skip the prior-year report when its CSV is missing.
-def test_missing_prior_year_skips_only_second_report(tmp_path, monkeypatch, capsys):
+# Keep current drift and quality reports when the prior-year CSV is missing.
+def test_missing_prior_year_skips_only_prior_year_reports(tmp_path, monkeypatch, capsys):
     monthly_csv = tmp_path / "datos_abiertos_2026_10.csv"
     requested = []
     reports = []
+    quality_reports = []
 
     # Return the current dataset and simulate a missing prior-year dataset.
     def save_month(path):
@@ -141,13 +143,108 @@ def test_missing_prior_year_skips_only_second_report(tmp_path, monkeypatch, caps
     monkeypatch.setattr(monitor, "save_p1_monthly_dataset", save_month)
     monkeypatch.setattr(monitor, "save_p1_training_dataset", lambda: tmp_path / "history.parquet")
     monkeypatch.setattr(monitor, "create_p1_drift_report", create_report)
+    monkeypatch.setattr(
+        monitor,
+        "create_p1_data_quality_report",
+        lambda dataset, output: quality_reports.append((dataset, output)) or output,
+    )
     monkeypatch.setattr(monitor, "_print_drift_result", lambda *args: None)
 
     monitor.run_monitoring(monthly_csv)
 
     assert requested == ["datos_abiertos_2026_10.csv", "datos_abiertos_2025_10.csv"]
-    assert len(reports) == 1
-    assert "Prior-year drift test skipped: prior-year CSV missing" in capsys.readouterr().out
+    assert reports == [(tmp_path / "history.parquet", tmp_path / "current.parquet")]
+    assert quality_reports == [
+        (tmp_path / "history.parquet", monitor.REPORTS_DIR / "p1_data_quality_train.html"),
+        (tmp_path / "current.parquet", monitor.REPORTS_DIR / "p1_data_quality_2026_10.html"),
+    ]
+    assert (
+        "Prior-year data quality and drift reports skipped: prior-year CSV missing"
+        in capsys.readouterr().out
+    )
+
+
+# Request both drift comparisons and quality reports for all three datasets.
+def test_monitor_creates_reports_for_all_three_datasets(tmp_path, monkeypatch):
+    monthly_csv = tmp_path / "datos_abiertos_2026_10.csv"
+    datasets = {
+        "datos_abiertos_2026_10.csv": tmp_path / "current.parquet",
+        "datos_abiertos_2025_10.csv": tmp_path / "previous.parquet",
+    }
+    drift_reports = []
+    quality_reports = []
+
+    def create_drift(reference, current, output=monitor.REPORTS_DIR / "p1_data_drift.html"):
+        drift_reports.append((reference, current, output))
+        return output
+
+    def create_quality(dataset, output):
+        quality_reports.append((dataset, output))
+        return output
+
+    monkeypatch.setattr(monitor, "save_p1_monthly_dataset", lambda path: datasets[Path(path).name])
+    monkeypatch.setattr(monitor, "save_p1_training_dataset", lambda: tmp_path / "train.parquet")
+    monkeypatch.setattr(monitor, "create_p1_drift_report", create_drift)
+    monkeypatch.setattr(monitor, "create_p1_data_quality_report", create_quality)
+    monkeypatch.setattr(monitor, "_print_drift_result", lambda *args: None)
+
+    monitor.run_monitoring(monthly_csv)
+
+    assert drift_reports == [
+        (
+            tmp_path / "train.parquet",
+            tmp_path / "current.parquet",
+            monitor.REPORTS_DIR / "p1_data_drift.html",
+        ),
+        (
+            tmp_path / "previous.parquet",
+            tmp_path / "current.parquet",
+            monitor.REPORTS_DIR / "p1_data_drift_2025_10_vs_2026_10.html",
+        ),
+    ]
+    assert quality_reports == [
+        (tmp_path / "train.parquet", monitor.REPORTS_DIR / "p1_data_quality_train.html"),
+        (tmp_path / "current.parquet", monitor.REPORTS_DIR / "p1_data_quality_2026_10.html"),
+        (tmp_path / "previous.parquet", monitor.REPORTS_DIR / "p1_data_quality_2025_10.html"),
+    ]
+
+
+# Report dataset-level quality metrics and missing values for every feature and target.
+def test_data_quality_report_summarizes_features_and_target(tmp_path):
+    from mi_bici_experiment.modeling.modules.p1_regression.models import RegressionModel
+
+    model = RegressionModel()
+    frame = pd.DataFrame(
+        {
+            **{column: [1.0, 2.0, 3.0, 4.0] for column in model.num_var},
+            STATION_COL: [1, 2, 1, 2],
+            "dayofweek": [0, 1, 2, 3],
+            "month": [10, 10, 10, 10],
+            OBJETIVO_COL: [2, 3, 4, 5],
+        }
+    )
+    dataset_path = tmp_path / "p1.parquet"
+    output_path = tmp_path / "quality.html"
+    frame.to_parquet(dataset_path, index=False)
+
+    monitor.create_p1_data_quality_report(dataset_path, output_path)
+
+    assert output_path.is_file()
+    result = json.loads(output_path.with_suffix(".json").read_text(encoding="utf-8"))
+    types = {metric["config"]["type"].rsplit(":", 1)[-1] for metric in result["metrics"]}
+    assert {
+        "RowCount",
+        "DatasetMissingValueCount",
+        "DuplicatedRowCount",
+        "MissingValueCount",
+    } <= types
+    summarized_columns = {
+        metric["config"]["column"]
+        for metric in result["metrics"]
+        if metric["config"]["type"].endswith("MissingValueCount")
+        and "column" in metric["config"]
+    }
+    assert summarized_columns == set(model.todas_var + [OBJETIVO_COL])
 
 
 # Reassemble an MLflow-split CSV path containing spaces before monitoring.

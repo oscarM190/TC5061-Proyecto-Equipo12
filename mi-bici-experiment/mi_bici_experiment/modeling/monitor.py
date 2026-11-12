@@ -245,6 +245,33 @@ def create_p1_drift_report(
     return output_path
 
 
+def create_p1_data_quality_report(dataset_path: Path, output_path: Path) -> Path:
+    """Save HTML and JSON data summaries for every P1 model column and the target."""
+    from evidently import DataDefinition, Dataset, Report
+    from evidently.presets import DataSummaryPreset
+
+    from mi_bici_experiment.modeling.modules.p1_regression.models import RegressionModel
+
+    model = RegressionModel()
+    columns = model.todas_var + [OBJETIVO_COL]
+    frame = pd.read_parquet(dataset_path, columns=columns)
+    if frame.empty:
+        raise ValueError(f"P1 dataset must have rows for data quality analysis: {dataset_path}")
+
+    schema = DataDefinition(
+        numerical_columns=model.num_var + [OBJETIVO_COL],
+        categorical_columns=model.cat_var,
+    )
+    data = Dataset.from_pandas(frame, data_definition=schema)
+    snapshot = Report([DataSummaryPreset(columns=columns)], include_tests=True).run(data, None)
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    snapshot.save_html(str(output_path))
+    snapshot.save_json(str(output_path.with_suffix(".json")))
+    return output_path
+
+
 def _print_drift_result(label: str, report_path: Path) -> None:
     result = json.loads(report_path.with_suffix(".json").read_text(encoding="utf-8"))
     # Find the metric that counts features flagged for drift.
@@ -259,8 +286,15 @@ def _print_drift_result(label: str, report_path: Path) -> None:
     )
 
 
+def _print_data_quality_result(label: str, report_path: Path) -> None:
+    print(
+        f"{label} data quality | HTML: {report_path} "
+        f"| JSON: {report_path.with_suffix('.json')}"
+    )
+
+
 def run_monitoring(monthly_csv: Path) -> None:
-    """Prepare monthly data and run whole-history and prior-year drift checks."""
+    """Prepare P1 datasets and create drift and data quality reports."""
     monthly_csv = Path(monthly_csv)
     period = _period_from_csv(monthly_csv)
     # Compare the current month with the combined training data first.
@@ -271,26 +305,41 @@ def run_monitoring(monthly_csv: Path) -> None:
     print(f"P1 {period} dataset saved to {monthly_path}")
     _print_drift_result("Whole history vs current month", report_path)
 
-    # Missing prior-year data skips only this seasonal comparison.
+    current_label = f"{period.year}_{period.month:02d}"
+    training_quality = create_p1_data_quality_report(
+        training_path, REPORTS_DIR / "p1_data_quality_train.html"
+    )
+    current_quality = create_p1_data_quality_report(
+        monthly_path, REPORTS_DIR / f"p1_data_quality_{current_label}.html"
+    )
+    _print_data_quality_result("Train/validation/test", training_quality)
+    _print_data_quality_result(f"P1 {period}", current_quality)
+
+    # Missing prior-year data skips its quality report and seasonal comparison.
     previous_period = period - 12
     previous_csv = _csv_for_period(monthly_csv.parent, previous_period)
     try:
         previous_path = save_p1_monthly_dataset(previous_csv)
     except MonthlyDataUnavailable as error:
-        print(f"Prior-year drift test skipped: {error}")
+        print(f"Prior-year data quality and drift reports skipped: {error}")
         return
 
     previous_label = f"{previous_period.year}_{previous_period.month:02d}"
-    current_label = f"{period.year}_{period.month:02d}"
     seasonal_report = REPORTS_DIR / f"p1_data_drift_{previous_label}_vs_{current_label}.html"
     create_p1_drift_report(previous_path, monthly_path, seasonal_report)
     print(f"P1 {previous_period} dataset saved to {previous_path}")
     _print_drift_result("Same month last year vs current month", seasonal_report)
+    previous_quality = create_p1_data_quality_report(
+        previous_path, REPORTS_DIR / f"p1_data_quality_{previous_label}.html"
+    )
+    _print_data_quality_result(f"P1 {previous_period}", previous_quality)
 
 
 def main(argv: list[str] | None = None) -> None:
     """Run with ``python -m mi_bici_experiment.modeling.monitor``."""
-    parser = argparse.ArgumentParser(description="Create two P1 monthly data drift reports")
+    parser = argparse.ArgumentParser(
+        description="Create P1 monthly data drift and data quality reports"
+    )
     parser.add_argument(
         "--monthly-csv",
         type=Path,

@@ -364,8 +364,127 @@ def test_nomenclatura_en_utf8_y_latin1(tmp_path, codificacion):
     from mi_bici_experiment.features import info_estaciones, leer_nomenclatura
 
     ruta = tmp_path / "nomenclatura.csv"
-    ruta.write_bytes("id,name,latitude,longitude,dpcapacity\n2,(GDL-001) Av. Niños Héroes,20.6,-103.3,15\n"
-                     .encode(codificacion))
+    contenido = ("id,name,latitude,longitude,dpcapacity\n"
+                 "2,(GDL-001) Av. Niños Héroes,20.6,-103.3,15\n")
+    ruta.write_bytes(contenido.encode(codificacion))
     info = info_estaciones(leer_nomenclatura(ruta))
     assert info.loc[0, "nombre"] == "(GDL-001) Av. Niños Héroes"
     assert info.loc[0, "municipio"] == "GDL"
+
+
+# --- Versión alternativa (reentrenamiento registrado como challenger) ----------------------------
+
+def test_periodos_se_derivan_del_fin():
+    p = p3.periodos("2026-09-30")
+    assert p == {"inicio_prueba": "2026-10-01", "inicio_validacion": "2026-07-01",
+                 "fin_ajuste_validacion": "2026-06-30"}
+    assert list(p3.periodos().values()) == [p3.INICIO_PRUEBA, p3.INICIO_VALIDACION,
+                                            p3.FIN_AJUSTE_VALIDACION]
+
+
+def test_argumento_fin_desde_config_y_consola():
+    assert _argumentos_p3([]).fin == P3_FIN_ENTRENAMIENTO
+    assert _argumentos_p3(["--fin", "2026-09-30"]).fin == "2026-09-30"
+
+
+def test_mlproject_retrain_usa_la_ventana_de_config():
+    import yaml
+
+    from mi_bici_experiment.config import (
+        PROJ_ROOT,
+        P3_REENTRENAMIENTO_FIN,
+        P3_REENTRENAMIENTO_INICIO,
+    )
+
+    mlproject = yaml.safe_load((PROJ_ROOT.parent / "MLproject").read_text())
+    retrain = mlproject["entry_points"]["retrain"]
+    assert retrain["parameters"]["inicio"]["default"] == P3_REENTRENAMIENTO_INICIO
+    assert retrain["parameters"]["fin"]["default"] == P3_REENTRENAMIENTO_FIN
+    assert retrain["parameters"]["alias"]["default"] == "challenger"
+
+
+@pytest.fixture
+def parquet_sintetico(tmp_path, monkeypatch):
+    """Viajes de enero y febrero de 2026 en lugar del Parquet real."""
+    ruta = tmp_path / "viajes.parquet"
+    viajes_sinteticos().to_parquet(ruta)
+    monkeypatch.setattr(p3, "TRIPS_PARQUET", ruta)
+    return ruta
+
+
+def test_fin_posterior_a_los_datos_falla(parquet_sintetico):
+    with pytest.raises(ValueError, match="posterior a los datos"):
+        p3.DatosP3("2026-01-01", "2026-03-31")
+
+
+def test_entrenar_hasta_el_ultimo_dia_deja_la_prueba_vacia(parquet_sintetico):
+    datos = p3.DatosP3("2026-01-01", "2026-02-28")
+    assert len(datos.train) > 0 and datos.test.empty
+    assert datos.fin == "2026-02-28"
+
+
+def test_metricas_sin_prueba_interna_omiten_test_ari():
+    datos = datos_sinteticos()
+    datos.test = datos.test.iloc[0:0]
+    pipe = p3.construir("kmeans", 3, 2).fit(datos.train[datos.cols])
+    resultado = p3.metricas(pipe, pipe, datos)
+    assert "test_ari_estabilidad" not in resultado
+    assert "val_ari_estabilidad" in resultado
+
+
+def _champion(cliente, seed=7):
+    run_id, _ = p3.entrenar(datos_sinteticos(), "kmeans", 3, pca=2, seed=seed,
+                            artefactos=False, modelo=True)
+    p3.registrar(run_id, "champion")
+    return run_id
+
+
+def test_reentrenar_registra_nueva_version_como_challenger(mlflow_temporal):
+    """La versión alternativa hereda la receta de champion y no la desplaza."""
+    _champion(mlflow_temporal)
+    datos = datos_sinteticos(seed=1)
+    datos.inicio, datos.fin = "2026-02-01", "2026-09-30"
+
+    version, base = p3.reentrenar(datos, artefactos=False)
+
+    modelo = mlflow_temporal.get_registered_model(p3.NOMBRE_REGISTRO)
+    assert (version, base) == ("2", "1")
+    assert {a: str(v) for a, v in modelo.aliases.items()} == {"champion": "1", "challenger": "2"}
+    nueva = mlflow_temporal.get_model_version(p3.NOMBRE_REGISTRO, version)
+    assert nueva.tags["version_base"] == "1"
+    assert (nueva.tags["inicio_entrenamiento"], nueva.tags["fin_entrenamiento"]) == (
+        "2026-02-01", "2026-09-30")
+    run = mlflow_temporal.get_run(nueva.run_id)
+    assert (run.data.params["k"], run.data.params["pca"], run.data.params["random_state"]) == (
+        "3", "2", "7")
+    assert run.data.tags["stage_of_work"] == "retrain"
+    comparacion = mlflow.artifacts.load_dict(
+        f"runs:/{nueva.run_id}/tables/comparacion_con_champion.json"
+    )
+    assert comparacion["champion"]["version"] == "1"
+    assert comparacion["challenger"]["ventana"] == ["2026-02-01", "2026-09-30"]
+
+
+def test_reentrenar_con_otros_hiperparametros(mlflow_temporal):
+    _champion(mlflow_temporal)
+    version, _ = p3.reentrenar(datos_sinteticos(), artefactos=False, k=4)
+    nueva = mlflow_temporal.get_model_version(p3.NOMBRE_REGISTRO, version)
+    run = mlflow_temporal.get_run(nueva.run_id)
+    assert (run.data.params["k"], run.data.params["pca"]) == ("4", "2")
+
+
+def test_reentrenar_requiere_champion_y_cambios(mlflow_temporal):
+    with pytest.raises(ValueError, match="no tiene versión champion"):
+        p3.reentrenar(datos_sinteticos(), artefactos=False)
+    _champion(mlflow_temporal)
+    with pytest.raises(ValueError, match="Misma ventana"):
+        p3.reentrenar(datos_sinteticos(), artefactos=False)
+    with pytest.raises(ValueError, match="champion"):
+        p3.reentrenar(datos_sinteticos(), alias="champion", artefactos=False)
+
+
+def test_retrain_solo_para_p3():
+    from mi_bici_experiment.modeling.run import main
+
+    with pytest.raises(SystemExit, match="solo está implementado para p3"):
+        main(["retrain", "--question", "p1"])

@@ -147,6 +147,12 @@ P3_K_CANDIDATOS = [3, 4, 5, 6, 7, 8]
 P3_PCA_COMPONENTES = 2
 P3_N_INIT = 20  # inicializaciones de k-means; se queda la de menor inercia
 P3_FIGURES_DIR = FIGURES_DIR / "p3"
+# Versión alternativa (reentrenamiento): la receta de champion con los 12 meses más recientes del
+# Parquet (un ciclo estacional completo, incluye las estaciones abiertas en 2026). El mes más
+# reciente descargado (MI_BICI_PARQUET_EXCLUDED_CSVS) queda fuera como periodo actual de
+# evaluación.
+P3_REENTRENAMIENTO_INICIO = "2025-10-01"
+P3_REENTRENAMIENTO_FIN = FECHA_FIN
 
 # If tqdm is installed, configure loguru with tqdm.write
 # https://github.com/Delgan/loguru/issues/135

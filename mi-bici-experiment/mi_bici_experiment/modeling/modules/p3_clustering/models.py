@@ -154,7 +154,7 @@ class DatosP3:
         if pd.Timestamp(fin) > ultimo_dia:
             raise ValueError(f"fin={fin} es posterior a los datos ({ultimo_dia.date()})")
         # Si el entrenamiento llega a FECHA_FIN (reentrenamiento con todo el histórico), la
-        # prueba queda vacía y el periodo posterior se evalúa aparte (ver ab_test.py).
+        # prueba interna queda vacía; ese periodo posterior todavía no existe en el Parquet.
         p = periodos(fin)
         self.inicio, self.fin = inicio, fin
         self.train = perfil_estaciones(viajes, inicio, fin)
@@ -183,7 +183,9 @@ def metricas(pipe: Pipeline, pipe_val: Pipeline, datos: DatosP3) -> dict:
         "val_ari_estabilidad": ari_estabilidad(pipe_val, datos.ajuste_val, datos.val, datos.cols),
     }
     if len(datos.test):
-        resultado["test_ari_estabilidad"] = ari_estabilidad(pipe, datos.train, datos.test, datos.cols)
+        resultado["test_ari_estabilidad"] = ari_estabilidad(
+            pipe, datos.train, datos.test, datos.cols
+        )
     return resultado
 
 
@@ -242,6 +244,10 @@ def _registrar_artefactos(pipe: Pipeline, datos: DatosP3, nombre: str, params: d
             tabla.to_csv(carpeta / archivo, index=False)
             mlflow.log_artifact(str(carpeta / archivo), artifact_path="tables")
 
+
+
+def _registrar_modelo(pipe: Pipeline, X: pd.DataFrame) -> None:
+    """Pipeline con firma y ejemplo de entrada; es lo que después se registra en el Registry."""
     ejemplo = X.head(5).astype("float64")
     mlflow.sklearn.log_model(
         pipe,
@@ -256,12 +262,13 @@ def _registrar_artefactos(pipe: Pipeline, datos: DatosP3, nombre: str, params: d
 def entrenar(datos: DatosP3, model: str = "kmeans", k: int = 3, pca: int = 0, cov: str = "full",
              linkage: str = "ward", n_init: int = P3_N_INIT, seed: int = RANDOM_STATE,
              stage: str = "candidate", run_name: str | None = None, nested: bool = False,
-             artefactos: bool = True) -> tuple[str, dict]:
+             artefactos: bool = True, modelo: bool | None = None) -> tuple[str, dict]:
     """Ajusta un modelo P3 y registra parámetros, métricas, etiquetas y artefactos en MLflow.
 
     Los parámetros se registran con los mismos nombres que `mlflow run -P`, salvo la semilla
     (`random_state`) y la fecha (`inicio_entrenamiento`), que pueden venir vacías desde el
-    MLproject y resolverse en config.py.
+    MLproject y resolverse en config.py. `artefactos` guarda gráficas, tablas y el modelo;
+    `modelo` permite guardar solo el modelo (por omisión sigue a `artefactos`).
     """
     hp = {"model": model, "k": k, "pca": pca, "cov": cov, "linkage": linkage, "n_init": n_init}
     nombre = run_name or f"p3-{model}-k{k}" + (f"-pca{pca}" if pca else "")
@@ -299,6 +306,8 @@ def entrenar(datos: DatosP3, model: str = "kmeans", k: int = 3, pca: int = 0, co
         mlflow.log_metrics(resultado)
         if artefactos:
             _registrar_artefactos(pipe, datos, nombre, params)
+        if artefactos if modelo is None else modelo:
+            _registrar_modelo(pipe, datos.train[datos.cols])
         return run.info.run_id, resultado
 
 
@@ -378,12 +387,61 @@ def registrar(run_id: str, alias: str = "champion"):
         NOMBRE_REGISTRO,
         version.version,
         description=(
-            f"{origen.info.run_name} ({p.get('inicio_entrenamiento')}..{p.get('fin_entrenamiento')}): "
-            f"{resumen}"
+            f"{origen.info.run_name} "
+            f"({p.get('inicio_entrenamiento')}..{p.get('fin_entrenamiento')}): {resumen}"
         ),
     )
     cliente.set_registered_model_alias(NOMBRE_REGISTRO, alias, version.version)
     return version.version, mlflow.pyfunc.load_model(f"models:/{NOMBRE_REGISTRO}@{alias}")
+
+
+def reentrenar(datos: DatosP3, alias: str = "challenger", artefactos: bool = True,
+               **cambios) -> tuple[str, str]:
+    """Versión alternativa: la receta de champion reentrenada con la ventana de `datos` (y los
+    hiperparámetros de `cambios`, si se indican), registrada como nueva versión del mismo modelo
+    con `alias`. No mueve champion: la promoción se decide después con evidencia (A/B testing).
+
+    `artefactos=False` omite gráficas y tablas (no el modelo). Devuelve la versión nueva y la de
+    champion.
+    """
+    if alias == "champion":
+        raise ValueError("La versión alternativa no puede registrarse directamente como champion")
+    cliente = mlflow.MlflowClient()
+    try:
+        base = cliente.get_model_version_by_alias(NOMBRE_REGISTRO, "champion")
+    except mlflow.exceptions.MlflowException as error:
+        raise ValueError(
+            f"{NOMBRE_REGISTRO} no tiene versión champion; regístrala primero"
+        ) from error
+    params_base = cliente.get_run(base.run_id).data.params
+    receta = {
+        "model": params_base["model"], "k": int(params_base["k"]), "pca": int(params_base["pca"]),
+        "cov": params_base["cov"], "linkage": params_base["linkage"],
+        "n_init": int(params_base["n_init"]), "seed": int(params_base["random_state"]),
+    }
+    hp = {**receta, **cambios}
+    ventana_base = (params_base["inicio_entrenamiento"], params_base["fin_entrenamiento"])
+    if (datos.inicio, datos.fin) == ventana_base and hp == receta:
+        raise ValueError(f"Misma ventana ({datos.inicio}..{datos.fin}) e hiperparámetros que "
+                         f"champion (v{base.version}); cambia las fechas o los hiperparámetros")
+
+    nombre = f"p3-{hp['model']}-k{hp['k']}-reentrenado-{datos.inicio}-a-{datos.fin}"
+    run_id, metricas_nuevas = entrenar(datos, stage="retrain", run_name=nombre,
+                                       artefactos=artefactos, modelo=True, **hp)
+    version, _ = registrar(run_id, alias)
+    cliente.set_model_version_tag(NOMBRE_REGISTRO, version, "version_base", base.version)
+
+    # Comparación descriptiva con champion: métricas de entrenamiento de cada versión en su propia
+    # ventana. Decidir cuál queda vigente corresponde a la evaluación sobre el periodo actual.
+    metricas_base = cliente.get_run(base.run_id).data.metrics
+    cliente.log_dict(run_id, {
+        "champion": {"version": str(base.version), "ventana": list(ventana_base),
+                     "hiperparametros": receta,
+                     "metricas": {m: metricas_base.get(m) for m in metricas_nuevas}},
+        alias: {"version": str(version), "ventana": [datos.inicio, datos.fin],
+                "hiperparametros": hp, "metricas": metricas_nuevas},
+    }, "tables/comparacion_con_champion.json")
+    return str(version), str(base.version)
 
 
 class ClusteringModel:

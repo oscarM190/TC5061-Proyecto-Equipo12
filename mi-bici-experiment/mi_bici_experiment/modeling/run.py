@@ -20,6 +20,8 @@ from mi_bici_experiment.config import (
     P3_INICIO_ENTRENAMIENTO,
     P3_K_CANDIDATOS,
     P3_N_INIT,
+    P3_REENTRENAMIENTO_FIN,
+    P3_REENTRENAMIENTO_INICIO,
     RANDOM_STATE,
 )
 
@@ -32,24 +34,43 @@ def _argumentos_p3(extra: list[str]) -> argparse.Namespace:
     p.add_argument("--linkage", default="ward", help="Aglomerativo: criterio de enlace.")
     p.add_argument("--n_init", type=int, default=P3_N_INIT, help="K-means: inicializaciones.")
     p.add_argument("--seed", type=int, default=RANDOM_STATE)
-    p.add_argument("--stage", default="candidate", choices=["baseline", "search", "candidate"])
+    p.add_argument("--stage", default="candidate",
+                   choices=["baseline", "search", "candidate", "retrain"])
     p.add_argument("--inicio", default=P3_INICIO_ENTRENAMIENTO, help="Inicio del entrenamiento.")
     p.add_argument("--fin", default=P3_FIN_ENTRENAMIENTO, help="Fin del entrenamiento.")
     p.add_argument("--ks", default=",".join(map(str, P3_K_CANDIDATOS)), help="search: valores de k.")
     p.add_argument("--pcas", default="0,2", help="search: componentes de PCA.")
-    p.add_argument("--alias", default="champion", help="register: alias de la versión.")
+    p.add_argument("--alias", default=None,
+                   help="register: alias de la versión (champion); retrain: challenger.")
     return p.parse_args(extra)
 
 
-def _p3(accion: str, model: str, run_id: str, extra: list[str]) -> None:
+def _p3(accion: str, model: str, run_id: str, extra: list[str],
+        model_indicado: bool = True) -> None:
     from mi_bici_experiment.modeling.modules.p3_clustering import models as p3
 
     a = _argumentos_p3(extra)
     if accion == "register":
-        with mlflow.start_run(run_name=f"p3-register-{a.alias}"):
+        alias = a.alias or "champion"
+        with mlflow.start_run(run_name=f"p3-register-{alias}"):
             mlflow.set_tags({"question": "p3", "stage_of_work": "registry"})
-            version, modelo = p3.registrar(run_id, a.alias)
-        logger.info(f"{p3.NOMBRE_REGISTRO} v{version} @{a.alias} cargado: {modelo.metadata.run_id}")
+            version, modelo = p3.registrar(run_id, alias)
+        logger.info(f"{p3.NOMBRE_REGISTRO} v{version} @{alias} cargado: {modelo.metadata.run_id}")
+        return
+    if accion == "retrain":
+        indicados = {t.removeprefix("--").split("=")[0] for t in extra if t.startswith("--")}
+        inicio = a.inicio if "inicio" in indicados else P3_REENTRENAMIENTO_INICIO
+        fin = a.fin if "fin" in indicados else P3_REENTRENAMIENTO_FIN
+        datos = p3.DatosP3(inicio, fin)
+        alias = a.alias or "challenger"
+        # Solo cambia lo que se pasó explícitamente; el resto se hereda de champion.
+        cambios = {c: getattr(a, c) for c in ("k", "pca", "cov", "linkage", "n_init", "seed")
+                   if c in indicados}
+        if model_indicado:
+            cambios["model"] = model
+        version, base = p3.reentrenar(datos, alias, **cambios)
+        logger.info(f"{p3.NOMBRE_REGISTRO} v{version} @{alias} registrada ({inicio}..{fin}); "
+                    f"champion sigue en v{base}")
         return
     datos = p3.DatosP3(a.inicio, a.fin)
     if accion == "search":
@@ -151,15 +172,17 @@ def _p2(accion: str, model: str, run_id: str, extra: list[str]) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument("accion", choices=["train", "search", "register"])
+    p.add_argument("accion", choices=["train", "search", "register", "retrain"])
     p.add_argument("--question", required=True, choices=["p1", "p2", "p3"])
-    p.add_argument("--model", default="kmeans")
+    p.add_argument("--model", default=None)
     p.add_argument("--run_id", default="", help="register: corrida cuyo modelo se registra.")
     args, extra = p.parse_known_args(argv)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
 
+    if args.accion == "retrain" and args.question != "p3":
+        raise SystemExit(f"{args.question}: 'retrain' solo está implementado para p3")
     if args.question == "p3":
-        _p3(args.accion, args.model, args.run_id, extra)
+        _p3(args.accion, args.model or "kmeans", args.run_id, extra, args.model is not None)
     elif args.question == "p2":
         _p2(args.accion, args.model, args.run_id, extra)
     elif args.question == "p1":

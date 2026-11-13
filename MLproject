@@ -26,6 +26,16 @@ entry_points:
       model: {type: string}
     command: "cd mi-bici-experiment && python -m mi_bici_experiment.modeling.run search --question {question} --model {model}"
 
+  # Versión alternativa de P3: hereda la receta de champion y la registra como challenger.
+  # Cambios opcionales de hiperparámetros con -P k=4, -P pca=0, etc.
+  retrain:
+    parameters:
+      question: {type: string, default: p3}
+      inicio: {type: string, default: "2025-10-01"}
+      fin: {type: string, default: "2026-09-30"}
+      alias: {type: string, default: challenger}
+    command: "cd mi-bici-experiment && python -m mi_bici_experiment.modeling.run retrain --question {question} --inicio {inicio} --fin {fin} --alias {alias}"
+
   register:
     parameters:
       question: {type: string}

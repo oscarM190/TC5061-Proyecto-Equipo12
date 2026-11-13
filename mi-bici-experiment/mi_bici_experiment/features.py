@@ -316,6 +316,15 @@ def columnas_perfil(perfil: pd.DataFrame, prefijo: str | None = None) -> list[st
     return [c for c in cols if c.startswith(prefijo)] if prefijo else cols
 
 
+def leer_nomenclatura(path) -> pd.DataFrame:
+    """Catálogo de estaciones; los archivos de MiBici alternan UTF-8 y Latin-1 (p. ej. la ñ de
+    nomenclatura_2026_10.csv), así que se intenta UTF-8 y, si falla, Latin-1."""
+    try:
+        return pd.read_csv(path)
+    except UnicodeDecodeError:
+        return pd.read_csv(path, encoding="latin-1")
+
+
 def info_estaciones(nomenclatura: pd.DataFrame) -> pd.DataFrame:
     """Nombre, ubicación, capacidad y municipio de cada estación para ubicar los grupos.
 

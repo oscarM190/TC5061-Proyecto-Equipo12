@@ -356,3 +356,16 @@ def test_revisar_perfiles_detecta_problemas(dano, clave):
     r = validacion_p3.revisar_perfiles(perfil, dano(perfil))
     assert not r["integridad_ok"]
     assert r[clave] if not isinstance(r[clave], dict) else any(r[clave].values())
+
+
+@pytest.mark.parametrize("codificacion", ["utf-8", "latin-1"])
+def test_nomenclatura_en_utf8_y_latin1(tmp_path, codificacion):
+    """nomenclatura_2026_10.csv viene en Latin-1; el mapa de grupos debe poder leerla."""
+    from mi_bici_experiment.features import info_estaciones, leer_nomenclatura
+
+    ruta = tmp_path / "nomenclatura.csv"
+    ruta.write_bytes("id,name,latitude,longitude,dpcapacity\n2,(GDL-001) Av. Niños Héroes,20.6,-103.3,15\n"
+                     .encode(codificacion))
+    info = info_estaciones(leer_nomenclatura(ruta))
+    assert info.loc[0, "nombre"] == "(GDL-001) Av. Niños Héroes"
+    assert info.loc[0, "municipio"] == "GDL"

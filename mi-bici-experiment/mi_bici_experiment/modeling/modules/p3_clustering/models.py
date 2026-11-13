@@ -58,6 +58,7 @@ from mi_bici_experiment.features import (
     columnas_perfil,
     filtrar_viajes_validos,
     info_estaciones,
+    leer_nomenclatura,
     perfil_estaciones,
 )
 from mi_bici_experiment.modeling.modules.p3_clustering.estimadores import (
@@ -206,7 +207,7 @@ def _registrar_artefactos(pipe: Pipeline, datos: DatosP3, nombre: str, params: d
         mlflow.log_artifact(str(carpeta / "params.json"), artifact_path="config")
 
         estaciones = datos.train.assign(grupo=etiquetas(pipe, X)).merge(
-            info_estaciones(pd.read_csv(NOMENCLATURA_CSV)), on="estacion_id"
+            info_estaciones(leer_nomenclatura(NOMENCLATURA_CSV)), on="estacion_id"
         )
         k = estaciones["grupo"].nunique()
         for figura in (

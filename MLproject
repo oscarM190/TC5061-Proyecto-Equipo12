@@ -41,3 +41,11 @@ entry_points:
       question: {type: string}
       run_id: {type: string}
     command: "cd mi-bici-experiment && python -m mi_bici_experiment.modeling.run register --question {question} --run_id {run_id}"
+
+
+  # A/B test de P1: compara champion y challenger sobre octubre de 2026 (requiere correr antes monitor y retrain). Sin -P promover=true solo reporta la decisión.
+  ab_test:
+    parameters:
+      promover: {type: string, default: "false"}
+      min_mejora_pct: {type: float, default: 1.0}
+    command: "cd mi-bici-experiment && python -m mi_bici_experiment.modeling.ab_test --promover {promover} --min_mejora_pct {min_mejora_pct}"

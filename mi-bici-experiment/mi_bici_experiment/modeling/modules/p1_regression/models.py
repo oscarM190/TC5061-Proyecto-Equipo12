@@ -35,7 +35,7 @@ from mi_bici_experiment.config import (
     STATION_COL,
     TEST_PARTICION,
     VAL_PARTICION,
-    P1_NOMBRE_REGISTRO
+    P1_NOMBRE_REGISTRO,
 )
 from mi_bici_experiment.features import (
     agregar_variables,
@@ -276,7 +276,122 @@ def promover_a_produccion(run_id: str):
     print(f"{P1_NOMBRE_REGISTRO} v{version}cargado con alias champion")
 
 
-    
+# Hiperparámetros de LightGBM que se registran en cada corrida y su tipo, para reconstruir la
+# receta de una versión a partir de los parámetros (texto) de su run.
+TIPOS_HIPERPARAMETROS = {
+    "n_estimators": int,
+    "learning_rate": float,
+    "num_leaves": int,
+    "min_child_samples": int,
+}
+
+
+def hiperparametros_de_corrida(params: dict) -> dict:
+    """Hiperparámetros de LightGBM de una run de MLflow, con su tipo original."""
+    return {k: tipo(params[k]) for k, tipo in TIPOS_HIPERPARAMETROS.items() if k in params}
+
+
+def reentrenar(fecha_inicio=FECHA_INICIO, fecha_fin=FECHA_FIN, incluir_validacion=True,
+               alias="challenger", **cambios):
+    """Versión alternativa de P1: nueva versión del mismo modelo registrado, sin mover champion.
+
+    Parte de la receta (hiperparámetros) de la versión champion y la reentrena con datos más
+    recientes: con `incluir_validacion` el entrenamiento abarca entrenamiento + validación, así que
+    llega hasta el inicio de la prueba. La prueba es el mismo periodo que la de champion (misma
+    partición cronológica), así que sus métricas se pueden comparar. `cambios` sustituye
+    hiperparámetros concretos. Decidir cuál queda vigente corresponde a la evaluación de ambas
+    versiones sobre el periodo actual.
+
+    Devuelve la versión nueva y la versión champion de la que parte.
+    """
+    if alias == "champion":
+        raise ValueError("La versión alternativa no puede registrarse directamente como champion")
+    client = MlflowClient()
+    try:
+        base = client.get_model_version_by_alias(P1_NOMBRE_REGISTRO, "champion")
+    except mlflow.exceptions.MlflowException as error:
+        raise ValueError(
+            f"{P1_NOMBRE_REGISTRO} no tiene versión champion; ejecuta primero la búsqueda de P1"
+        ) from error
+    run_base = client.get_run(base.run_id)
+    receta = hiperparametros_de_corrida(run_base.data.params)
+    hiperparametros = {**receta, **cambios}
+    misma_ventana = (run_base.data.params.get("fecha_inicio"),
+                     run_base.data.params.get("fecha_fin")) == (fecha_inicio, fecha_fin)
+    if misma_ventana and not incluir_validacion and hiperparametros == receta:
+        raise ValueError(f"Misma ventana, partición e hiperparámetros que champion "
+                         f"(v{base.version}); no sería una versión distinta")
+
+    modelo = RegressionLGBM(fecha_inicio, fecha_fin)
+    modelo.hiperparametros = hiperparametros
+    modelo.preparar_datos()
+    if incluir_validacion:
+        modelo.entrenamiento = pd.concat([modelo.entrenamiento, modelo.validacion])
+    modelo.entrenar()
+    modelo.evaluar()
+    if incluir_validacion:
+        # La validación ya es parte del entrenamiento: su error no estima el desempeño.
+        modelo.metricas = {k: v for k, v in modelo.metricas.items() if k.startswith("test_")}
+    ventana = [str(modelo.entrenamiento["date"].min().date()),
+               str(modelo.entrenamiento["date"].max().date())]
+
+    mlflow.set_experiment(MLFLOW_EXPERIMENT)
+    with mlflow.start_run(run_name="P1-lightgbm-reentrenado") as run:
+        mlflow.set_tags({
+            "equipo": EQUIPO,
+            "pregunta": "P1",
+            "model_family": "lightgbm",
+            "stage_of_work": "retrain",
+            "version_base": base.version,
+            **git_info(),
+            "entorno": os.getenv("MIBICI_ENTORNO", "local"),
+        })
+        mlflow.log_params({
+            # En minúsculas, como lo registra `mlflow run` al pasarlo como parámetro del MLproject.
+            "incluir_validacion": str(incluir_validacion).lower(),
+            "inicio_entrenamiento": ventana[0],
+            "fin_entrenamiento": ventana[1],
+        })
+        modelo.registrar_corrida()
+        # Mismo periodo de prueba si la ventana y las fracciones coinciden con las de champion.
+        mlflow.log_dict({
+            "misma_prueba": misma_ventana,
+            "champion": {
+                "version": str(base.version),
+                "hiperparametros": receta,
+                "metricas": {k: v for k, v in run_base.data.metrics.items()
+                             if k.startswith("test_")},
+            },
+            alias: {
+                "hiperparametros": hiperparametros,
+                "ventana_entrenamiento": ventana,
+                "metricas": modelo.metricas,
+            },
+        }, "tables/comparacion_con_champion.json")
+
+    version = mlflow.register_model(f"runs:/{run.info.run_id}/model", P1_NOMBRE_REGISTRO).version
+    resumen = ", ".join(f"{k}={v:.3f}" for k, v in modelo.metricas.items())
+    client.update_model_version(
+        P1_NOMBRE_REGISTRO, version,
+        description=f"Reentrenada desde v{base.version} con {ventana[0]}..{ventana[1]}: {resumen}",
+    )
+    etiquetas = {
+        **git_info(),
+        "data_version": client.get_run(run.info.run_id).data.params.get("data_version", ""),
+        "run_origen": run.info.run_id,
+        "version_base": base.version,
+        "inicio_entrenamiento": ventana[0],
+        "fin_entrenamiento": ventana[1],
+    }
+    for clave, valor in etiquetas.items():
+        client.set_model_version_tag(P1_NOMBRE_REGISTRO, version, clave, str(valor))
+    client.set_registered_model_alias(P1_NOMBRE_REGISTRO, alias, version)
+    mlflow.sklearn.load_model(f"models:/{P1_NOMBRE_REGISTRO}@{alias}")
+    print(f"{P1_NOMBRE_REGISTRO} v{version} registrada con alias {alias}; "
+          f"champion sigue en v{base.version}")
+    return str(version), str(base.version)
+
+
 def buscar_hiperparametros(combinaciones=None, fecha_inicio=FECHA_INICIO, fecha_fin=FECHA_FIN):
     """Baseline con el run padre el cual contiene un hijo por combinación y gráfica de comparación como artefacto."""
     combinaciones= combinaciones or P1_COMBINACIONES

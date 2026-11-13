@@ -125,6 +125,7 @@ export MLFLOW_TRACKING_URI=http://127.0.0.1:5000      # Windows: set MLFLOW_TRAC
 | `train` | `question` (p1, p2, p3), `model` y sus hiperparámetros | Entrena y registra una corrida |
 | `search` | `question`, `model`, `ks`, `pcas` | Búsqueda con nested runs: una corrida padre y una hija por combinación |
 | `register` | `question`, `run_id`, `alias` | Registra el modelo de una corrida en el Model Registry y le asigna un alias |
+| `retrain` | `question` (p3), `inicio`, `fin`, `alias` | Reentrena la receta de `champion` con otra ventana y la registra como nueva versión (`challenger`) |
 
 Los hiperparámetros se pasan con `-P` aunque no estén declarados en el `MLproject`: MLflow los agrega al
 comando (`-P k=3` llega como `--k 3`), así cada pregunta recibe solo los suyos. Lo que no se indique (la
@@ -190,6 +191,41 @@ mlflow run . --experiment-name mibici-equipo12 -e train -P question=p3 -P model=
 mlflow run . --experiment-name mibici-equipo12 -e register -P question=p3 -P run_id=<run_id de p3-kmeans-k3-pca2> -P alias=champion --env-manager uv
 mlflow run . --experiment-name mibici-equipo12 -e register -P question=p3 -P run_id=<run_id de p3-kmeans-k4> -P alias=challenger --env-manager uv
 ```
+
+### Versión alternativa de P3 (reentrenamiento)
+
+El punto de entrada `retrain` genera una segunda versión del mismo modelo registrado
+(`mibici-equipo12-p3-grupos`) sin desplazar a la que está en producción:
+
+1. Lee la versión con alias `champion` y hereda su receta (modelo, `k`, PCA, `n_init`, semilla).
+2. La reentrena con la ventana `inicio`..`fin`; por defecto, los 12 meses más recientes del Parquet
+   (2025-10-01 a 2026-09-30, `P3_REENTRENAMIENTO_*` en `config.py`): un ciclo estacional completo que
+   incluye las estaciones abiertas en 2026. Octubre de 2026 se descarga pero no entra al Parquet
+   (`MI_BICI_PARQUET_EXCLUDED_CSVS`), así que queda libre como periodo actual para comparar las versiones.
+3. La registra como nueva versión con alias `challenger`, con las etiquetas `version_base` (versión de
+   `champion` de la que parte), `inicio_entrenamiento`, `fin_entrenamiento`, `run_origen`, `git_commit` y
+   `data_version`, y guarda `tables/comparacion_con_champion.json` en su corrida.
+
+Se niega a registrar la nueva versión directamente como `champion`, a ejecutarse sin una versión `champion` y
+a repetir la misma ventana con los mismos hiperparámetros. Promover la nueva versión es una decisión aparte,
+basada en la comparación de ambas sobre el periodo actual (`register` o `set_registered_model_alias`).
+
+```bash
+# Versión en producción (v1): receta k-means k=3 + PCA 2 de la entrega anterior, 2025-10 a 2026-06
+mlflow run . --experiment-name mibici-equipo12 -e train -P question=p3 -P model=kmeans -P k=3 -P pca=2 -P inicio=2025-10-01 -P fin=2026-06-30 --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e register -P question=p3 -P run_id=<run de v1> -P alias=champion --env-manager uv
+
+# Versión alternativa (v2): misma receta reentrenada con 2025-10 a 2026-09, registrada como challenger
+mlflow run . --experiment-name mibici-equipo12 -e retrain --env-manager uv
+
+# Variantes: otra ventana u otros hiperparámetros (solo cambia lo indicado)
+mlflow run . --experiment-name mibici-equipo12 -e retrain -P inicio=2026-01-01 --env-manager uv
+mlflow run . --experiment-name mibici-equipo12 -e retrain -P k=4 --env-manager uv
+```
+
+La versión se carga como `models:/mibici-equipo12-p3-grupos@challenger` o por número
+(`models:/mibici-equipo12-p3-grupos/2`). Para entrenar P3 con `nomenclatura_2026_10.csv` (codificada en
+Latin-1), el mapa de grupos lee el catálogo con `features.leer_nomenclatura`.
 
 ### Model Registry: aliases
 
@@ -259,6 +295,9 @@ Las pruebas del proyecto se encuentran en `mi-bici-experiment/tests/` y usan pyt
     mismas etiquetas, predicciones y métricas; `entrenar` (la función que usa `mlflow run`) registra
     las mismas métricas y parámetros en dos corridas de MLflow; la búsqueda con nested runs recupera
     los grupos sintéticos.
+  - **Versión alternativa:** fechas derivadas de `--fin`, prueba interna vacía al entrenar hasta el último
+    día, registro de la nueva versión como `challenger` heredando la receta de `champion`, cambios de
+    hiperparámetros y errores sin `champion` o con la misma configuración.
   - **Casos límite:** periodo sin viajes, umbral `min_viajes`, estaciones que solo salen en fin de
     semana o solo reciben, ninguna estación común entre periodos, más grupos que estaciones y perfiles
     con nulos.

@@ -183,8 +183,8 @@ def datos_sinteticos(seed=0):
     rng = np.random.default_rng(seed + 1)
     posterior = perfil.copy()
     posterior[cols] += rng.normal(0, [0.01, 0.1, 0.01], (len(perfil), 3))
-    return SimpleNamespace(inicio="2026-01-01", train=perfil, ajuste_val=perfil, val=posterior,
-                           test=posterior, cols=cols)
+    return SimpleNamespace(inicio="2026-01-01", fin=P3_FIN_ENTRENAMIENTO, train=perfil,
+                           ajuste_val=perfil, val=posterior, test=posterior, cols=cols)
 
 
 CONFIGURACIONES = [

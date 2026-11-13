@@ -79,11 +79,20 @@ TIPO_CONFIABLE = (
 )
 
 _DIA = pd.Timedelta(days=1)
-INICIO_PRUEBA = str((pd.Timestamp(P3_FIN_ENTRENAMIENTO) + _DIA).date())
-INICIO_VALIDACION = str(
-    (pd.Timestamp(INICIO_PRUEBA) - pd.DateOffset(months=P3_MESES_VALIDACION)).date()
-)
-FIN_AJUSTE_VALIDACION = str((pd.Timestamp(INICIO_VALIDACION) - _DIA).date())
+
+
+def periodos(fin: str = P3_FIN_ENTRENAMIENTO) -> dict[str, str]:
+    """Fechas de validación y prueba que se derivan del fin del entrenamiento."""
+    inicio_prueba = pd.Timestamp(fin) + _DIA
+    inicio_validacion = inicio_prueba - pd.DateOffset(months=P3_MESES_VALIDACION)
+    return {
+        "inicio_prueba": str(inicio_prueba.date()),
+        "inicio_validacion": str(inicio_validacion.date()),
+        "fin_ajuste_validacion": str((inicio_validacion - _DIA).date()),
+    }
+
+
+INICIO_PRUEBA, INICIO_VALIDACION, FIN_AJUSTE_VALIDACION = periodos().values()
 
 
 def construir(model: str, k: int, pca: int = 0, cov: str = "full", linkage: str = "ward",
@@ -128,7 +137,7 @@ def ari_estabilidad(pipe: Pipeline, perfil: pd.DataFrame, perfil_posterior: pd.D
 class DatosP3:
     """Perfiles por estación de entrenamiento, validación y prueba, construidos una sola vez."""
 
-    def __init__(self, inicio: str = P3_INICIO_ENTRENAMIENTO):
+    def __init__(self, inicio: str = P3_INICIO_ENTRENAMIENTO, fin: str = P3_FIN_ENTRENAMIENTO):
         if not TRIPS_PARQUET.is_file():
             raise FileNotFoundError(
                 f"No existe {TRIPS_PARQUET}; ejecuta primero `mlflow run . -e ingest`"
@@ -141,11 +150,17 @@ class DatosP3:
                 f"inicio={inicio} es anterior a los datos ({primer_dia.date()}); "
                 "ajusta P3_INICIO_ENTRENAMIENTO en config.py o el rango de MI_BICI_CSVS"
             )
-        self.inicio = inicio
-        self.train = perfil_estaciones(viajes, inicio, P3_FIN_ENTRENAMIENTO)
-        self.test = perfil_estaciones(viajes, INICIO_PRUEBA, FECHA_FIN)
-        self.ajuste_val = perfil_estaciones(viajes, inicio, FIN_AJUSTE_VALIDACION)
-        self.val = perfil_estaciones(viajes, INICIO_VALIDACION, P3_FIN_ENTRENAMIENTO)
+        ultimo_dia = viajes[FECHA_INICIO_COL].max().normalize()
+        if pd.Timestamp(fin) > ultimo_dia:
+            raise ValueError(f"fin={fin} es posterior a los datos ({ultimo_dia.date()})")
+        # Si el entrenamiento llega a FECHA_FIN (reentrenamiento con todo el histórico), la
+        # prueba queda vacía y el periodo posterior se evalúa aparte (ver ab_test.py).
+        p = periodos(fin)
+        self.inicio, self.fin = inicio, fin
+        self.train = perfil_estaciones(viajes, inicio, fin)
+        self.test = perfil_estaciones(viajes, p["inicio_prueba"], FECHA_FIN)
+        self.ajuste_val = perfil_estaciones(viajes, inicio, p["fin_ajuste_validacion"])
+        self.val = perfil_estaciones(viajes, p["inicio_validacion"], fin)
         self.cols = columnas_perfil(self.train)
 
 
@@ -159,15 +174,17 @@ def metricas(pipe: Pipeline, pipe_val: Pipeline, datos: DatosP3) -> dict:
     grupos = etiquetas(pipe, X)
     X_comun = StandardScaler().fit_transform(X)
     tamanos = np.bincount(grupos)
-    return {
+    resultado = {
         "train_silhouette_espacio_comun": silhouette_score(X_comun, grupos),
         "train_davies_bouldin_espacio_comun": davies_bouldin_score(X_comun, grupos),
         "train_calinski_harabasz_espacio_comun": calinski_harabasz_score(X_comun, grupos),
         "train_tamano_min_grupo": int(tamanos.min()),
         "train_prop_min_grupo": float(tamanos.min() / len(grupos)),
         "val_ari_estabilidad": ari_estabilidad(pipe_val, datos.ajuste_val, datos.val, datos.cols),
-        "test_ari_estabilidad": ari_estabilidad(pipe, datos.train, datos.test, datos.cols),
     }
+    if len(datos.test):
+        resultado["test_ari_estabilidad"] = ari_estabilidad(pipe, datos.train, datos.test, datos.cols)
+    return resultado
 
 
 def resumen_grupos(estaciones: pd.DataFrame) -> pd.DataFrame:
@@ -264,9 +281,10 @@ def entrenar(datos: DatosP3, model: str = "kmeans", k: int = 3, pca: int = 0, co
             **hp,
             "random_state": seed,
             "inicio_entrenamiento": datos.inicio,
-            "fin_entrenamiento": P3_FIN_ENTRENAMIENTO,
-            "validacion": f"{INICIO_VALIDACION}..{P3_FIN_ENTRENAMIENTO}",
-            "prueba": f"{INICIO_PRUEBA}..{FECHA_FIN}",
+            "fin_entrenamiento": datos.fin,
+            "validacion": f"{periodos(datos.fin)['inicio_validacion']}..{datos.fin}",
+            "prueba": f"{periodos(datos.fin)['inicio_prueba']}..{FECHA_FIN}"
+            if len(datos.test) else "sin prueba interna",
             "data_version": version_datos_manifiesto(),
             "min_viajes": P3_MIN_VIAJES,
             "n_estaciones": len(datos.train),
@@ -345,16 +363,23 @@ def registrar(run_id: str, alias: str = "champion"):
             "run_origen": run_id,
             "git_commit": origen.data.tags.get("git_commit", ""),
             "data_version": origen.data.params.get("data_version", ""),
+            "inicio_entrenamiento": origen.data.params.get("inicio_entrenamiento", ""),
+            "fin_entrenamiento": origen.data.params.get("fin_entrenamiento", ""),
         },
+    )
+    p = origen.data.params
+    metricas_run = origen.data.metrics
+    resumen = ", ".join(
+        f"{m}={metricas_run[m]:.3f}"
+        for m in ("val_ari_estabilidad", "test_ari_estabilidad", "train_silhouette_espacio_comun")
+        if m in metricas_run
     )
     cliente.update_model_version(
         NOMBRE_REGISTRO,
         version.version,
         description=(
-            f"{origen.info.run_name}: val_ari_estabilidad="
-            f"{origen.data.metrics['val_ari_estabilidad']:.3f}, test_ari_estabilidad="
-            f"{origen.data.metrics['test_ari_estabilidad']:.3f}, train_silhouette_espacio_comun="
-            f"{origen.data.metrics['train_silhouette_espacio_comun']:.3f}"
+            f"{origen.info.run_name} ({p.get('inicio_entrenamiento')}..{p.get('fin_entrenamiento')}): "
+            f"{resumen}"
         ),
     )
     cliente.set_registered_model_alias(NOMBRE_REGISTRO, alias, version.version)

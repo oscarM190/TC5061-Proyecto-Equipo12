@@ -16,6 +16,7 @@ import mlflow
 from mi_bici_experiment.config import (
     MLFLOW_EXPERIMENT,
     P2_COMBINACIONES,
+    P3_FIN_ENTRENAMIENTO,
     P3_INICIO_ENTRENAMIENTO,
     P3_K_CANDIDATOS,
     P3_N_INIT,
@@ -33,6 +34,7 @@ def _argumentos_p3(extra: list[str]) -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=RANDOM_STATE)
     p.add_argument("--stage", default="candidate", choices=["baseline", "search", "candidate"])
     p.add_argument("--inicio", default=P3_INICIO_ENTRENAMIENTO, help="Inicio del entrenamiento.")
+    p.add_argument("--fin", default=P3_FIN_ENTRENAMIENTO, help="Fin del entrenamiento.")
     p.add_argument("--ks", default=",".join(map(str, P3_K_CANDIDATOS)), help="search: valores de k.")
     p.add_argument("--pcas", default="0,2", help="search: componentes de PCA.")
     p.add_argument("--alias", default="champion", help="register: alias de la versión.")
@@ -49,7 +51,7 @@ def _p3(accion: str, model: str, run_id: str, extra: list[str]) -> None:
             version, modelo = p3.registrar(run_id, a.alias)
         logger.info(f"{p3.NOMBRE_REGISTRO} v{version} @{a.alias} cargado: {modelo.metadata.run_id}")
         return
-    datos = p3.DatosP3(a.inicio)
+    datos = p3.DatosP3(a.inicio, a.fin)
     if accion == "search":
         ks = [int(x) for x in a.ks.split(",")]
         pcas = [int(x) for x in a.pcas.split(",")]

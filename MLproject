@@ -9,6 +9,11 @@ entry_points:
   ingest:
     command: "cd mi-bici-experiment && python -m mi_bici_experiment.dataset"
 
+  monitor:
+    parameters:
+      monthly_csv: {type: string, default: data/raw/datos_abiertos_2026_10.csv}
+    command: 'cd mi-bici-experiment && python -m mi_bici_experiment.modeling.monitor --monthly-csv "{monthly_csv}"'
+
   train:
     parameters:
       question: {type: string}

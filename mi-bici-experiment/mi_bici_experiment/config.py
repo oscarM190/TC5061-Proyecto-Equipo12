@@ -116,8 +116,12 @@ MI_BICI_CSVS = [
     "https://mibici.net/site/assets/files/129006/datos_abiertos_2026_07.csv",
     "https://mibici.net/site/assets/files/130362/datos_abiertos_2026_08.csv",
     "https://mibici.net/site/assets/files/131825/datos_abiertos_2026_09.csv",
+    "https://mibici.net/site/assets/files/133188/datos_abiertos_2026_10.csv",
     "https://mibici.net/site/assets/files/1118/nomenclatura_2026_10.csv",
 ]
+
+# Download these CSVs but omit them from the merged trips Parquet and its data version.
+MI_BICI_PARQUET_EXCLUDED_CSVS = frozenset({"datos_abiertos_2026_10.csv"})
 
 ##   Columnas y archivos que usan P2 y P3 (las generales están en la sección de P1)   ##
 EQUIPO = "12"

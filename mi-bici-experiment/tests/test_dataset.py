@@ -10,16 +10,17 @@ import polars as pl
 import pytest
 
 import mi_bici_experiment.dataset as dataset_module
+import mi_bici_experiment.tracking as tracking_module
 from mi_bici_experiment.dataset import DatasetManager
 
 
-# Provide a fresh dataset manager to each test that requests one.
+# Create a separate dataset manager for each test that uses this fixture.
 @pytest.fixture
 def manager():
     return DatasetManager()
 
 
-# Write a CSV with the supplied columns and rows, then return its path.
+# Write the given rows and column names to a CSV and return its path.
 def write_csv(path, fieldnames, rows):
     with path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
@@ -28,12 +29,12 @@ def write_csv(path, fieldnames, rows):
     return path
 
 
-# Write trip rows using the required trip columns and any extra columns.
+# Write trip rows with the required columns and any optional extra columns.
 def write_trips(path, rows, extra_columns=()):
     return write_csv(path, [*DatasetManager.TRIP_COLUMNS, *extra_columns], rows)
 
 
-# Build a trip row with timestamps, station IDs, and optional extra fields.
+# Build a trip row with start and end times, station IDs, and optional fields.
 def trip(start, end, origin=1, destination=2, **extra):
     return {
         "Inicio_del_viaje": start,
@@ -44,20 +45,20 @@ def trip(start, end, origin=1, destination=2, **extra):
     }
 
 
-# [TEST 1] A nonexistent input directory raises NotADirectoryError.
+# Loading trips from a missing directory raises NotADirectoryError.
 def test_load_requires_existing_directory(manager, tmp_path):
     with pytest.raises(NotADirectoryError):
         manager.load_trips_dataset(tmp_path / "missing")
 
 
-# [TEST 2] A directory without monthly trip CSVs raises FileNotFoundError.
+# Loading a directory without matching trip CSVs raises FileNotFoundError.
 def test_load_requires_matching_csv(manager, tmp_path):
     (tmp_path / "other.csv").write_text("anything\n", encoding="utf-8")
     with pytest.raises(FileNotFoundError):
         manager.load_trips_dataset(tmp_path)
 
 
-# [TEST 3] Both supported timestamp formats are parsed and truncated to midnight.
+# Parse both supported timestamp formats and truncate each time to midnight.
 @pytest.mark.parametrize(
     ("start", "end"),
     [
@@ -74,7 +75,7 @@ def test_load_parses_and_truncates_both_dates(manager, tmp_path, start, end):
     assert result["Fin_del_viaje"].to_list() == [datetime(2024, 10, 28)]
 
 
-# [TEST 4] Monthly files with different date formats are combined, retaining only trip columns.
+# Combine monthly files with different date formats and discard extra columns.
 def test_load_combines_months_with_different_formats_and_selects_columns(manager, tmp_path):
     write_trips(
         tmp_path / "datos_abiertos_2024_10.csv",
@@ -95,21 +96,38 @@ def test_load_combines_months_with_different_formats_and_selects_columns(manager
     assert result["Fin_del_viaje"].to_list() == [datetime(2024, 10, 27), datetime(2024, 11, 2)]
 
 
-# [TEST 5] A trip CSV containing only a header raises ValueError.
+# Exclude configured CSVs by default and include them when the exclusion is cleared.
+def test_load_omits_configured_csv_but_can_include_it_when_enabled(manager, tmp_path, monkeypatch):
+    write_trips(
+        tmp_path / "datos_abiertos_2026_09.csv",
+        [trip("2026-09-30 14:30:00", "2026-09-30 15:00:00")],
+    )
+    write_trips(
+        tmp_path / "datos_abiertos_2026_10.csv",
+        [trip("2026-10-01 14:30:00", "2026-10-01 15:00:00", origin=3)],
+    )
+
+    assert manager.load_trips_dataset(tmp_path).collect()["Origen_Id"].to_list() == [1]
+
+    monkeypatch.setattr(dataset_module, "MI_BICI_PARQUET_EXCLUDED_CSVS", frozenset())
+    assert manager.load_trips_dataset(tmp_path).collect()["Origen_Id"].to_list() == [1, 3]
+
+
+# A trip CSV containing only a header raises ValueError.
 def test_load_rejects_header_only_csv(manager, tmp_path):
     write_trips(tmp_path / "datos_abiertos_empty.csv", [])
     with pytest.raises(ValueError, match="empty"):
         manager.load_trips_dataset(tmp_path).collect()
 
 
-# [TEST 6] A missing timestamp in the first trip raises ValueError.
+# A missing start timestamp in the first trip raises ValueError.
 def test_load_rejects_missing_first_timestamp(manager, tmp_path):
     write_trips(tmp_path / "datos_abiertos_missing.csv", [trip("", "2024-10-27 15:00:00")])
     with pytest.raises(ValueError, match="Missing timestamp"):
         manager.load_trips_dataset(tmp_path).collect()
 
 
-# [TEST 7] Invalid start or end timestamps raise an error when the lazy frame is collected.
+# Invalid start or end timestamps fail when the lazy frame is collected.
 @pytest.mark.parametrize("bad_column", ["Inicio_del_viaje", "Fin_del_viaje"])
 def test_load_rejects_malformed_timestamps(manager, tmp_path, bad_column):
     row = trip("2024-10-27 14:30:00", "2024-10-27 15:00:00")
@@ -119,7 +137,7 @@ def test_load_rejects_malformed_timestamps(manager, tmp_path, bad_column):
         manager.load_trips_dataset(tmp_path).collect()
 
 
-# [TEST 8] Each required trip column must be present in the input CSV.
+# Reject a trip CSV missing any required column.
 @pytest.mark.parametrize("missing_column", DatasetManager.TRIP_COLUMNS)
 def test_load_rejects_missing_required_column(manager, tmp_path, missing_column):
     columns = [column for column in manager.TRIP_COLUMNS if column != missing_column]
@@ -130,7 +148,7 @@ def test_load_rejects_missing_required_column(manager, tmp_path, missing_column)
         manager.load_trips_dataset(tmp_path).collect()
 
 
-# [TEST 9] Saving without the station catalog raises FileNotFoundError and skips the manifest.
+# Saving without a station catalog fails before writing a manifest.
 def test_save_requires_station_catalog(manager, tmp_path, monkeypatch):
     manifest = Mock()
     monkeypatch.setattr(manager, "write_trips_manifest", manifest)
@@ -139,8 +157,8 @@ def test_save_requires_station_catalog(manager, tmp_path, monkeypatch):
     manifest.assert_not_called()
 
 
-# [TEST 10] Saved trips have valid origin metadata, expected types, and ascending start dates.
-# Unknown origins and stations with invalid coordinates or capacity are removed.
+# Enrich trips with valid origin stations, cast columns, and sort by start date.
+# Drop unknown origins, invalid station metadata, and the configured excluded month.
 def test_save_enriches_filters_sorts_and_types_trips(manager, tmp_path, monkeypatch):
     stations = [
         {"id": 1, "longitude": -103.3, "latitude": 20.7, "dpcapacity": 20},
@@ -160,6 +178,10 @@ def test_save_enriches_filters_sorts_and_types_trips(manager, tmp_path, monkeypa
             trip("2024-10-27 14:30:00", "2024-10-28 15:00:00", origin=2)]
     rows.extend(trip("2024-10-28 14:30:00", "2024-10-28 15:00:00", origin=i) for i in range(3, 13))
     write_trips(tmp_path / "datos_abiertos_2024_10.csv", rows)
+    write_trips(
+        tmp_path / "datos_abiertos_2026_10.csv",
+        [trip("2026-10-01 14:30:00", "2026-10-01 15:00:00", origin=1)],
+    )
     manifest = Mock()
     monkeypatch.setattr(manager, "write_trips_manifest", manifest)
     output = tmp_path / "nested" / "trips.parquet"
@@ -184,7 +206,7 @@ def test_save_enriches_filters_sorts_and_types_trips(manager, tmp_path, monkeypa
     manifest.assert_called_once_with(tmp_path, output)
 
 
-# [TEST 11] An existing nonempty download is reused without making a network request.
+# Reuse an existing nonempty CSV without making a network request.
 def test_download_reuses_existing_file(manager, tmp_path, monkeypatch):
     monkeypatch.setattr(dataset_module, "RAW_DATA_DIR", tmp_path)
     urlopen = Mock()
@@ -197,7 +219,7 @@ def test_download_reuses_existing_file(manager, tmp_path, monkeypatch):
     urlopen.assert_not_called()
 
 
-# [TEST 12] A successful download saves the response bytes and leaves no temporary file.
+# Save downloaded bytes at the URL filename and remove the temporary file.
 def test_download_saves_response(manager, tmp_path, monkeypatch):
     monkeypatch.setattr(dataset_module, "RAW_DATA_DIR", tmp_path)
     urlopen = Mock(return_value=io.BytesIO(b"id,value\n1,2\n"))
@@ -214,7 +236,7 @@ def test_download_saves_response(manager, tmp_path, monkeypatch):
     assert not list(tmp_path.glob("*.part"))
 
 
-# [TEST 13] Empty responses and network errors leave no destination or partial download.
+# Empty responses and network errors leave no destination or partial download.
 @pytest.mark.parametrize("failure", ["empty", "network"])
 def test_download_cleans_up_failed_download(manager, tmp_path, monkeypatch, failure):
     monkeypatch.setattr(dataset_module, "RAW_DATA_DIR", tmp_path)
@@ -232,7 +254,7 @@ def test_download_cleans_up_failed_download(manager, tmp_path, monkeypatch, fail
     assert not list(tmp_path.glob("*.part"))
 
 
-# [TEST 14] A URL without a filename raises ValueError without making a request.
+# Reject a URL without a filename before making a network request.
 def test_download_rejects_url_without_filename(manager, tmp_path, monkeypatch):
     monkeypatch.setattr(dataset_module, "RAW_DATA_DIR", tmp_path)
     urlopen = Mock()
@@ -242,14 +264,17 @@ def test_download_rejects_url_without_filename(manager, tmp_path, monkeypatch):
     urlopen.assert_not_called()
 
 
-# [TEST 15] The manifest records the version, row count, source and output paths, and hashes.
+# Record the dataset version, row count, and hashes of included sources and output.
+# Omit unrelated and configured excluded CSVs from the manifest.
 def test_write_manifest_records_sources_output_and_hashes(manager, tmp_path, monkeypatch):
     monkeypatch.setattr(dataset_module, "PROJ_ROOT", tmp_path / "project")
     first = tmp_path / "datos_abiertos_2024_10.csv"
     second = tmp_path / "datos_abiertos_2024_11.csv"
     catalog = tmp_path / "nomenclatura_2026_10.csv"
+    excluded = tmp_path / "datos_abiertos_2026_10.csv"
     for path, content in [(first, b"first"), (second, b"second"), (catalog, b"stations")]:
         path.write_bytes(content)
+    excluded.write_bytes(b"downloaded but not merged")
     (tmp_path / "unrelated.csv").write_bytes(b"ignored")
     output = tmp_path / "trips.parquet"
     pl.DataFrame({"value": [1, 2, 3]}).write_parquet(output)
@@ -267,14 +292,31 @@ def test_write_manifest_records_sources_output_and_hashes(manager, tmp_path, mon
     ]
 
 
-# [TEST 16] The file hashing helper returns the known SHA-256 digest of the input bytes.
+# Keep the data version unchanged when an excluded CSV is added.
+def test_data_version_ignores_csv_excluded_from_parquet(tmp_path, monkeypatch):
+    september = tmp_path / "datos_abiertos_2026_09.csv"
+    october = tmp_path / "datos_abiertos_2026_10.csv"
+    september.write_bytes(b"september trips")
+    monkeypatch.setattr(tracking_module, "RAW_DATA_DIR", tmp_path)
+    monkeypatch.setattr(
+        tracking_module,
+        "MI_BICI_CSVS",
+        [f"https://example.com/{september.name}", f"https://example.com/{october.name}"],
+    )
+
+    version_without_october = tracking_module.version_datos()
+    october.write_bytes(b"october trips")
+    assert tracking_module.version_datos() == version_without_october
+
+
+# Hash file contents to the expected SHA-256 digest.
 def test_sha256_file_matches_known_digest(manager, tmp_path):
     path = tmp_path / "example.txt"
     path.write_bytes(b"abc")
     assert manager._sha256_file(path) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
 
 
-# [TEST 17] Manifest paths are project-relative inside the project and filenames outside it.
+# Use project-relative manifest paths inside the project and filenames outside it.
 def test_manifest_file_path_inside_and_outside_project(manager, tmp_path, monkeypatch):
     project = tmp_path / "project"
     monkeypatch.setattr(dataset_module, "PROJ_ROOT", project)

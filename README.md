@@ -870,6 +870,35 @@ Los datos generados se guardan en `mi-bici-experiment/data/processed/p1_YYYY_MM.
 
 Abre los archivos HTML para inspeccionar las distribuciones y los resultados por variable. Los archivos JSON contienen los mismos resultados para análisis automatizado. El comando deja estos archivos en el repositorio; no los adjunta como artefactos de la corrida de MLflow.
 
+
+## A/B testing de P1
+
+El punto de entrada `ab_test` compara las versiones `champion` y `challenger` del modelo
+`mibici-equipo12-p1-demanda` sobre las mismas filas de octubre de 2026
+(`mi-bici-experiment/data/processed/p1_2026_10.parquet`). Ninguna de las dos vio octubre al
+entrenar: el challenger se entrena con datos hasta agosto de 2026.
+
+Criterio de decisión: gana el challenger solo si (1) el límite inferior del IC 95 % de la
+reducción del error absoluto, con bootstrap por estación, es mayor que 0; (2) el MAE mejora
+al menos 1 %; y (3) el RMSE no empeora. En otro caso se conserva el champion.
+
+Flujo completo, desde la raíz del repositorio:
+
+```powershell
+mlflow run . -e monitor --env-manager local
+mlflow run . -e retrain --env-manager local --experiment-name mibici-equipo12
+mlflow run . -e ab_test --env-manager local --experiment-name mibici-equipo12
+```
+
+`monitor` genera el parquet del mes actual, `retrain` registra la nueva versión con el alias
+`challenger` y `ab_test` compara ambas. Sin más parámetros solo reporta la decisión. Para
+promover al challenger si gana, agrega `-P promover=true`; el champion anterior queda con el
+alias `previous`. El resultado queda en la corrida `P1-ab-test` de MLflow (métricas, gráfica
+`plots/ab_test.png` y `tables/ab_test.json`).
+
+Resultado con octubre de 2026: el challenger (v4) reduce el MAE 1.86 % (8.007 a 7.858) y el
+RMSE 4.75 %, con IC 95 % de la diferencia [0.060, 0.275] viajes.
+
 ---
 
 ## Flujo de trabajo con Git

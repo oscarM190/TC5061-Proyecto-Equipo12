@@ -125,6 +125,7 @@ export MLFLOW_TRACKING_URI=http://127.0.0.1:5000      # Windows: set MLFLOW_TRAC
 | `train` | `question` (p1, p2, p3), `model` y sus hiperparámetros | Entrena y registra una corrida |
 | `search` | `question`, `model`, `ks`, `pcas` | Búsqueda con nested runs: una corrida padre y una hija por combinación |
 | `register` | `question`, `run_id`, `alias` | Registra el modelo de una corrida en el Model Registry y le asigna un alias |
+| `retrain` | `question` (p1), `incluir_validacion`, `alias` | Reentrena la versión `champion` de P1 con datos más recientes y la registra como nueva versión (`challenger`) |
 
 Los hiperparámetros se pasan con `-P` aunque no estén declarados en el `MLproject`: MLflow los agrega al
 comando (`-P k=3` llega como `--k 3`), así cada pregunta recibe solo los suyos. Lo que no se indique (la
@@ -156,6 +157,40 @@ mlflow run . --experiment-name mibici-equipo12 -e train -P question=p1 -P model=
 # Reproducir el mejor modelo (modelo_3 de config.py)
 mlflow run . --experiment-name mibici-equipo12 -e train -P question=p1 -P model=lgbm -P n_estimators=400 -P learning_rate=0.05 -P num_leaves=31 --env-manager uv
 ```
+
+### Versión alternativa de P1 (reentrenamiento)
+
+El punto de entrada `retrain` genera una segunda versión del mismo modelo registrado
+(`mibici-equipo12-p1-demanda`) sin desplazar a la que está en producción:
+
+1. Lee la versión con alias `champion` (la que registra la búsqueda de P1) y hereda sus
+   hiperparámetros de LightGBM.
+2. La reentrena con datos más recientes: con `incluir_validacion=true` (por defecto) el entrenamiento
+   abarca los periodos de entrenamiento y validación de la partición cronológica, así que llega hasta el
+   día anterior a la prueba. La prueba es el mismo periodo que la de `champion`, por lo que sus `test_mae`
+   y `test_rmse` se pueden comparar; el error de validación ya no se registra porque esos días forman
+   parte del entrenamiento.
+3. La registra como nueva versión con alias `challenger`, con las etiquetas `version_base` (versión
+   `champion` de la que parte), `inicio_entrenamiento`, `fin_entrenamiento`, `run_origen`, `git_commit` y
+   `data_version`, y guarda `tables/comparacion_con_champion.json` en su corrida.
+
+Se niega a registrarse como `champion`, a ejecutarse sin una versión `champion` y a repetir la misma
+configuración. Promoverla es una decisión aparte, basada en la comparación de ambas versiones sobre el
+periodo actual (octubre de 2026, que no forma parte del Parquet de entrenamiento).
+
+```bash
+# 1. Versión en producción (champion): búsqueda de P1
+mlflow run . --experiment-name mibici-equipo12 -e search -P question=p1 -P model=lgbm --env-manager uv
+
+# 2. Versión alternativa: mismos hiperparámetros, entrenamiento + validación, alias challenger
+mlflow run . --experiment-name mibici-equipo12 -e retrain --env-manager uv
+
+# Variante con otros hiperparámetros (solo cambian los indicados)
+mlflow run . --experiment-name mibici-equipo12 -e retrain -P n_estimators=600 -P learning_rate=0.03 --env-manager uv
+```
+
+Ambas versiones se cargan como `models:/mibici-equipo12-p1-demanda@champion` y
+`models:/mibici-equipo12-p1-demanda@challenger`.
 
 ### Comandos para reproducir P2
 ```bash
@@ -252,6 +287,9 @@ Las pruebas del proyecto se encuentran en `mi-bici-experiment/tests/` y usan pyt
 - `test_data_validation.py` prueba el esquema y el muestreo que usa la validación con Deepchecks.
 - `test_p1.py` prueba P1: variables sin fuga de datos, partición cronológica, baseline y LightGBM,
   métricas y reproducibilidad del entrenamiento con la configuración real.
+- `test_p1_version_alternativa.py` prueba la versión alternativa de P1 con un Model Registry temporal:
+  registro como `challenger` sin mover `champion`, herencia y cambio de hiperparámetros, entrenamiento
+  hasta el inicio de la prueba y errores sin `champion` o con la misma configuración.
 - `test_p2.py` prueba el baseline y el Random Forest de P2.
 - `test_p3.py` cubre P3: perfiles de estaciones sin datos posteriores, partición temporal, los cuatro
   modelos de clustering, la configuración y la validación de perfiles. Incluye:

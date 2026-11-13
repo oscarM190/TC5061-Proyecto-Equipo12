@@ -68,6 +68,9 @@ def _argumentos_p1(extra: list[str]) -> argparse.Namespace:
     p.add_argument("--min_child_samples", type=int, default=None)
     p.add_argument("--inicio", default=None, help="Fecha de inicio.")
     p.add_argument("--fin", default=None, help="Fecha de fin.")
+    p.add_argument("--incluir_validacion", default="true",
+                   help="retrain: entrenamiento + validación (true) o solo entrenamiento.")
+    p.add_argument("--alias", default="challenger", help="retrain: alias de la nueva versión.")
     return p.parse_args(extra)
 
 
@@ -87,6 +90,11 @@ def _p1(accion: str, run_id: str, extra: list[str]) -> None:
         for k in ("n_estimators", "learning_rate", "num_leaves", "min_child_samples")
         if getattr(a, k) is not None
     }
+    if accion == "retrain":
+        # Hereda los hiperparámetros de champion; solo cambian los que se indiquen.
+        incluir = a.incluir_validacion.lower() in ("true", "1", "yes")
+        p1.reentrenar(inicio, fin, incluir, a.alias, **elegidos)
+        return
     if accion == "train" and elegidos:
         base = next(iter(P1_COMBINACIONES.values()))
         p1.buscar_hiperparametros({"personalizada": {**base, **elegidos}}, inicio, fin)
@@ -149,13 +157,15 @@ def _p2(accion: str, model: str, run_id: str, extra: list[str]) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    p.add_argument("accion", choices=["train", "search", "register"])
+    p.add_argument("accion", choices=["train", "search", "register", "retrain"])
     p.add_argument("--question", required=True, choices=["p1", "p2", "p3"])
     p.add_argument("--model", default="kmeans")
     p.add_argument("--run_id", default="", help="register: corrida cuyo modelo se registra.")
     args, extra = p.parse_known_args(argv)
     mlflow.set_experiment(MLFLOW_EXPERIMENT)
 
+    if args.accion == "retrain" and args.question != "p1":
+        raise SystemExit(f"{args.question}: 'retrain' solo está implementado para p1")
     if args.question == "p3":
         _p3(args.accion, args.model, args.run_id, extra)
     elif args.question == "p2":

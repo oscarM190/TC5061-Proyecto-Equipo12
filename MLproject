@@ -26,6 +26,16 @@ entry_points:
       model: {type: string}
     command: "cd mi-bici-experiment && python -m mi_bici_experiment.modeling.run search --question {question} --model {model}"
 
+  # Versión alternativa de P1: hereda los hiperparámetros de champion, la reentrena con
+  # entrenamiento + validación y la registra como nueva versión con alias challenger.
+  # Hiperparámetros distintos con -P n_estimators=..., -P learning_rate=..., etc.
+  retrain:
+    parameters:
+      question: {type: string, default: p1}
+      incluir_validacion: {type: string, default: "true"}
+      alias: {type: string, default: challenger}
+    command: "cd mi-bici-experiment && python -m mi_bici_experiment.modeling.run retrain --question {question} --incluir_validacion {incluir_validacion} --alias {alias}"
+
   register:
     parameters:
       question: {type: string}

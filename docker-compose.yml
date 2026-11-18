@@ -1,0 +1,105 @@
+# Sistema MiBici (Equipo 12): API de inferencia de P1 + MLflow + Redis/RQ.
+# Levantar todo:   docker compose up -d --build      (o: podman-compose up -d --build)
+# Detener:         docker compose down               (-v borra también el registro de MLflow)
+# Las variables se leen de .env (ver .env.example); todas tienen valor por defecto.
+
+name: mibici
+
+x-api-image: &api-image
+  image: ${API_IMAGE:-mibici-api:local}
+  build:
+    context: .
+    dockerfile: Containerfile
+
+services:
+  mlflow:
+    build: serving/mlflow
+    image: mibici-mlflow:local
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    volumes:
+      - ${MLFLOW_STORE:-mlflow-store}:/mlflow
+    networks: [backend]
+    restart: unless-stopped
+
+  # Tarea de una sola vez: deja un champion de P1 en el registro si está vacío.
+  model-seed:
+    <<: *api-image
+    command: ["python", "scripts/seed_model.py"]
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    volumes:
+      - ./mi-bici-experiment/scripts:/app/scripts:ro
+      - ./serving/seed:/seed:ro
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    networks: [backend]
+    restart: "no"
+
+  api:
+    <<: *api-image
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MIBICI_MODEL_ALIAS: ${MIBICI_MODEL_ALIAS:-champion}
+      REDIS_URL: redis://redis:6379/0
+      WEB_CONCURRENCY: ${API_WORKERS:-1}
+      MIBICI_PRELOAD_MODEL: "1"
+    depends_on:
+      model-seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks: [frontend, backend]
+    deploy:
+      resources:
+        limits:
+          cpus: "${API_CPUS:-2}"
+          memory: ${API_MEMORY:-1g}
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.2-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+    restart: unless-stopped
+
+  # Worker de RQ: procesa /predict/async. SimpleWorker conserva el modelo cargado entre trabajos.
+  worker:
+    <<: *api-image
+    command:
+      - rq
+      - worker
+      - predicciones
+      - --url
+      - redis://redis:6379/0
+      - --worker-class
+      - rq.worker.SimpleWorker
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MIBICI_MODEL_ALIAS: ${MIBICI_MODEL_ALIAS:-champion}
+    healthcheck:
+      disable: true
+    depends_on:
+      model-seed:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks: [backend]
+    deploy:
+      replicas: ${WORKER_REPLICAS:-1}
+    restart: unless-stopped
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  mlflow-store:

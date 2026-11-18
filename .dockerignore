@@ -1,0 +1,14 @@
+.git
+.github
+.env
+**/.venv*
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+mi-bici-experiment/data
+mi-bici-experiment/mlruns
+mi-bici-experiment/mlartifacts
+mi-bici-experiment/mlflow.db
+mi-bici-experiment/notebooks
+mi-bici-experiment/reports
+serving/mlflow-store

@@ -34,3 +34,22 @@ jobs:
 
       - name: Run tests
         run: python -m pytest tests -v
+
+  build:
+    name: Build API image
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Build service image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --file mi-bici-experiment/Dockerfile \
+            --tag "mibici-api:${IMAGE_TAG}" \
+            --tag mibici-api:latest \
+            mi-bici-experiment

@@ -20,3 +20,5 @@ bandit==1.9.4
 uv==0.13.6
 fastapi[standard]==0.159.1
 evidently==0.7.23
+redis==8.1.0
+rq==3.0.0

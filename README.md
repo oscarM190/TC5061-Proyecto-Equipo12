@@ -48,6 +48,12 @@ dentro de `mi-bici-experiment/`:
 
 ```
 ├── .github/workflows/mlflow.yml   <- Pipeline de GitHub Actions
+├── Containerfile                  <- Imagen OCI de la API de P1 (también la usan model-seed y worker)
+├── docker-compose.yml             <- MLflow, API, Redis y worker de RQ con un solo comando
+├── .env.example                   <- Variables opcionales de docker compose
+├── serving
+│   ├── mlflow/Dockerfile          <- Imagen del servidor de MLflow
+│   └── seed/p1_muestra.csv        <- 500 filas reales de P1 para el modelo de demostración
 ├── MLproject                      <- Configuración del MLflow Project
 ├── python_env.yaml                <- Entorno de MLflow (Python y dependencias)
 ├── README.md                      <- Este documento
@@ -66,6 +72,7 @@ dentro de `mi-bici-experiment/`:
     │   └── images                 <- Imágenes usadas en los notebooks
     ├── references                 <- ML Canvas y diagrama de arquitectura
     ├── reports/figures            <- Figuras generadas por los modelos
+    ├── scripts                    <- seed_model.py y generar_muestra_p1.py (docker compose)
     ├── tests                      <- Pruebas con pytest
     └── mi_bici_experiment         <- Código del proyecto
         ├── config.py              <- Rutas, fechas, semilla, columnas y parámetros
@@ -898,6 +905,66 @@ alias `previous`. El resultado queda en la corrida `P1-ab-test` de MLflow (métr
 
 Resultado con octubre de 2026: el challenger (v4) reduce el MAE 1.86 % (8.007 a 7.858) y el
 RMSE 4.75 %, con IC 95 % de la diferencia [0.060, 0.275] viajes.
+
+---
+
+## Orquestación con Docker Compose (Actividad 9)
+
+[`docker-compose.yml`](docker-compose.yml) levanta con un solo comando el servidor de MLflow, la API
+de P1 y, de forma opcional, Redis con un worker de RQ para predicciones asíncronas.
+
+| Servicio | Imagen | Función | Red |
+|---|---|---|---|
+| `mlflow` | [`serving/mlflow/Dockerfile`](serving/mlflow/Dockerfile) | Tracking y Model Registry. SQLite y artefactos en el volumen `mlflow-store`, servidos por MLflow (`--serve-artifacts`); usuario sin privilegios | backend |
+| `model-seed` | [`Containerfile`](Containerfile) | Tarea de una sola vez: si no existe `mibici-equipo12-p1-demanda@champion`, entrena el LightGBM de P1 (hiperparámetros de `modelo_3`) con las 500 filas reales de [`serving/seed/p1_muestra.csv`](serving/seed/p1_muestra.csv) y lo registra como champion con la etiqueta `origen=seed-demo`. Si el champion existe, no cambia nada | backend |
+| `api` | [`Containerfile`](Containerfile) | FastAPI en el puerto 8000: `/health`, `/predict`, `/predict/async` y `/predict/async/{job_id}`. Precarga el modelo al arrancar | frontend, backend |
+| `redis` | `redis:8.2-alpine` | Cola de RQ, sin persistencia | backend |
+| `worker` | [`Containerfile`](Containerfile) | `rq worker predicciones` con `SimpleWorker`, que conserva el modelo en memoria entre trabajos | backend |
+
+Configuración:
+
+- **Orden de arranque:** `mlflow` pasa su `healthcheck` → `model-seed` termina con éxito
+  (`service_completed_successfully`) → arrancan `api` y `worker` (con `redis` sano).
+- **Redes:** `frontend` solo contiene la API; MLflow, Redis y el worker quedan en `backend`.
+- **Volumen:** `mlflow-store` guarda `mlflow.db` y `mlartifacts/`, de modo que el registro sobrevive a
+  `docker compose down`. Con `MLFLOW_STORE` se puede usar una carpeta local con un registro existente
+  (debe poder escribirla el UID 1000, el usuario del contenedor de MLflow).
+- **Variables:** todas tienen valor por defecto y se documentan en [`.env.example`](.env.example):
+  puertos, alias del modelo, procesos de Uvicorn (`API_WORKERS`), límites de CPU y memoria de la API
+  (`API_CPUS`, `API_MEMORY`) y réplicas del worker (`WORKER_REPLICAS`).
+
+### Levantar el sistema
+
+Requiere Docker con Compose v2. Desde la raíz del repositorio:
+
+```bash
+cp .env.example .env              # opcional
+docker compose up -d --build      # construye las imágenes y levanta todos los servicios
+docker compose ps                 # mlflow, api y redis en estado healthy; model-seed en Exited (0)
+docker compose logs model-seed    # si registró el modelo de demostración o ya había champion
+```
+
+- API (Swagger): <http://localhost:8000/docs> · MLflow: <http://localhost:5000>
+- Para servir el champion entrenado con la ingesta completa en lugar del de demostración, entrena P1
+  contra este servidor (`MLFLOW_TRACKING_URI=http://localhost:5000`, ver
+  [Comandos para reproducir P1](#comandos-para-reproducir-p1)) y reinicia la API con
+  `docker compose restart api worker`, o apunta `MLFLOW_STORE` a la carpeta de un registro existente.
+
+```bash
+# Predicción síncrona
+curl -X POST localhost:8000/predict -H 'content-type: application/json' \
+  -d '{"trips_lag_1":37,"trips_lag_7":22,"trips_roll_mean_7":31.7,"is_weekend":0,"origen_id":322,"dayofweek":2,"month":9}'
+
+# Predicción asíncrona: responde HTTP 202 con un job_id que procesa el worker de RQ
+curl -X POST localhost:8000/predict/async -H 'content-type: application/json' -d '<mismo cuerpo>'
+curl localhost:8000/predict/async/<job_id>    # status: queued, started, finished o failed
+
+docker compose down               # detiene todo y conserva el registro; con -v también lo borra
+```
+
+Sin `REDIS_URL` (por ejemplo, al correr la API fuera de Compose) los endpoints asíncronos responden
+503 y `/predict` funciona igual que antes. La muestra de `serving/seed/` se regenera desde
+`mi-bici-experiment/` con `python scripts/generar_muestra_p1.py` (requiere el Parquet de la ingesta).
 
 ---
 

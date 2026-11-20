@@ -60,3 +60,75 @@ def test_predict_clips_a_negative_regression_result(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["prediction"] == 0.0
+
+
+# Stand in for an RQ job and queue so the async endpoints run without Redis.
+class FakeJob:
+    def __init__(self, job_id: str, status: str = "queued", result=None):
+        self.id = job_id
+        self.status = status
+        self.result = result
+
+    def get_status(self) -> str:
+        return self.status
+
+    def return_value(self):
+        return self.result
+
+
+class FakeQueue:
+    def __init__(self):
+        self.jobs = {}
+        self.enqueued = []
+
+    def enqueue(self, func, values, **kwargs):
+        self.enqueued.append((func, values))
+        job = FakeJob(f"job-{len(self.enqueued)}")
+        self.jobs[job.id] = job
+        return job
+
+    def fetch_job(self, job_id):
+        return self.jobs.get(job_id)
+
+
+# [TEST 4] The async endpoint enqueues the validated features for the RQ worker.
+def test_predict_async_enqueues_the_prediction(monkeypatch):
+    queue = FakeQueue()
+    monkeypatch.setattr(api, "get_queue", lambda: queue)
+
+    response = TestClient(api.app).post("/predict/async", json=prediction_payload())
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "queued"
+    assert queue.enqueued == [("mi_bici_experiment.api.predict_values", prediction_payload())]
+
+
+# [TEST 5] A finished job returns the worker's prediction; an unknown job returns 404.
+def test_predict_async_result_returns_finished_prediction(monkeypatch):
+    queue = FakeQueue()
+    queue.jobs["listo"] = FakeJob("listo", status="finished", result=7.5)
+    monkeypatch.setattr(api, "get_queue", lambda: queue)
+    client = TestClient(api.app)
+
+    finished = client.get("/predict/async/listo")
+    missing = client.get("/predict/async/no-existe")
+
+    assert finished.status_code == 200
+    assert finished.json()["prediction"] == 7.5
+    assert missing.status_code == 404
+
+
+# [TEST 6] Without Redis the async endpoint reports 503 instead of failing.
+def test_predict_async_without_redis_returns_503(monkeypatch):
+    monkeypatch.setattr(api, "get_queue", lambda: None)
+
+    response = TestClient(api.app).post("/predict/async", json=prediction_payload())
+
+    assert response.status_code == 503
+
+
+# [TEST 7] The worker's function applies the same model and clipping as /predict.
+def test_predict_values_matches_the_sync_endpoint(monkeypatch):
+    monkeypatch.setattr(api, "get_model", lambda: DummyModel(-1.0))
+
+    assert api.predict_values(prediction_payload()) == 0.0

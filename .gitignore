@@ -230,3 +230,4 @@ __marimo__/
 # docker compose
 .env
 serving/mlflow-store/
+serving/load-test/results/

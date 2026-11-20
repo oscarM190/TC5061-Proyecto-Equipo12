@@ -97,6 +97,29 @@ services:
       replicas: ${WORKER_REPLICAS:-1}
     restart: unless-stopped
 
+  locust:
+    <<: *api-image
+    profiles: [load-test]
+    entrypoint: ["python", "/load-test/run.py"]
+    healthcheck:
+      disable: true
+    environment:
+      LOCUST_LOCUSTFILE: /load-test/locustfile.py
+      LOCUST_HOST: http://api:8000
+      LOCUST_HEADLESS: "true"
+      LOCUST_USERS: "20"
+      LOCUST_SPAWN_RATE: "5"
+      LOCUST_RUN_TIME: 2m
+      LOCUST_STOP_TIMEOUT: "8"
+    volumes:
+      - ./serving/load-test:/load-test:ro
+      - ./serving/seed/p1_muestra.csv:/seed/p1_muestra.csv:ro
+      - ./serving/load-test/results:/results
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [frontend]
+
 networks:
   frontend:
   backend:

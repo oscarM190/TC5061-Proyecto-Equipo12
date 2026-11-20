@@ -12,3 +12,4 @@ mi-bici-experiment/mlflow.db
 mi-bici-experiment/notebooks
 mi-bici-experiment/reports
 serving/mlflow-store
+serving/load-test/results

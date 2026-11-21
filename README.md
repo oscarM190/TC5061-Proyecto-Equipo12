@@ -966,6 +966,91 @@ Sin `REDIS_URL` (por ejemplo, al correr la API fuera de Compose) los endpoints a
 503 y `/predict` funciona igual que antes. La muestra de `serving/seed/` se regenera desde
 `mi-bici-experiment/` con `python scripts/generar_muestra_p1.py` (requiere el Parquet de la ingesta).
 
+## Pruebas de carga con Locust
+
+Locust simula usuarios concurrentes que envían peticiones a `POST /predict` desde la red de Compose.
+Cada usuario toma una fila al azar de la muestra de P1 y espera entre 0,5 y 1,5 segundos después de
+cada petición. Locust registra un fallo si vence el tiempo de espera, el código HTTP es distinto
+de 200 o la predicción falta o es inválida.
+
+### Ejecutar la prueba
+
+Desde la raíz del repositorio, con Python 3.11 o superior y Docker en ejecución, empieza con una
+prueba de 15 segundos. El lanzador usa Docker Compose v2 para iniciar los servicios necesarios y
+espera a que la API esté lista.
+
+```sh
+python serving/load-test/run_with_stats.py -- --users 2 --spawn-rate 1 --run-time 15s
+```
+
+Las opciones que siguen a `--` se pasan a Locust. `--users` fija el número objetivo de usuarios
+concurrentes, `--spawn-rate` indica cuántos usuarios se incorporan por segundo y `--run-time`
+establece la duración de la prueba. La corrida estándar dura 2 minutos y agrega 5 usuarios por
+segundo hasta llegar a 20.
+
+```sh
+python serving/load-test/run_with_stats.py
+```
+
+Mientras corre Locust, el lanzador toma muestras con `docker stats` aproximadamente cada 2 segundos
+de los contenedores activos de `api`, `mlflow`, `redis` y `worker`. Si interrumpes la prueba, el CSV
+conserva las muestras que ya se guardaron. Al terminar, abre `p1.html` en el navegador desde la
+carpeta que imprime el lanzador. Cada corrida tiene su propia carpeta en
+`serving/load-test/results/`, con la fecha y hora en UTC en el nombre.
+
+### Interpretar `p1.html`
+
+El reporte se puede abrir sin conexión. Empieza por las tablas de Locust y luego revisa las gráficas.
+
+1. **Request Statistics y Failures Statistics.** Revisa la fila `Aggregated` para ver las peticiones
+   y los fallos de toda la prueba. En **Charts**, `RPS` indica cuántas peticiones se procesan por
+   segundo y `Failures/s` indica cuántas fallan por segundo.
+2. **Response Times y Number of Users.** Aproximadamente el 50 % de las respuestas tardó el valor
+   de p50 o menos y el 95 % tardó el valor de p95 o menos. Ambos valores se expresan en
+   milisegundos. Compara la latencia y los fallos mientras aumenta el número de usuarios y una vez
+   que la carga se estabiliza.
+3. **Uso de recursos de Docker.** Las gráficas muestran CPU, memoria usada en MiB y porcentaje del
+   límite de memoria de cada contenedor. En Linux, el 100 % de CPU equivale aproximadamente a un
+   núcleo lógico ocupado. Con `API_CPUS=2`, el límite de la API equivale aproximadamente al 200 %.
+   Si el p95 sube mientras la CPU se acerca a ese valor, investiga una posible saturación. Las
+   gráficas de Docker cuentan segundos desde su primera muestra. Para alinear ambas series con
+   precisión, compara `Timestamp` de Locust (segundos Unix) con `timestamp_utc` de Docker.
+   [Cálculo de métricas de Docker](https://github.com/docker/cli/blob/master/cli/command/container/stats_helpers.go#L174)
+
+En una corrida de ejemplo, la fila `Aggregated` de `p1_final_stats.csv` registró 28 peticiones,
+0 fallos y un p95 de 9 ms. En una muestra de la API, `p1_docker_stats.csv` registró 246,2 MiB de
+memoria usada sobre un límite de 1024 MiB, aproximadamente el 24 %.
+
+### Archivos de la carpeta de resultados
+
+| Archivo | Qué guarda | Cuándo consultarlo |
+| --- | --- | --- |
+| `p1.html` | Tablas y gráficas de Locust con las gráficas de CPU y memoria de Docker incrustadas. | Para revisar la corrida completa en el navegador. |
+| `p1_final_stats.csv` | Totales de cierre por endpoint y en la fila `Aggregated`, con peticiones, fallos, tasas y percentiles de latencia. | Para citar cifras finales o comparar corridas. |
+| `p1_final_failures.csv` | Errores de las peticiones al cierre, con ocurrencias y horas de primera y última aparición. | Para identificar qué falló y cuántas veces. |
+| `p1_stats_history.csv` | Muestras con hora, usuarios, tasas, latencias y contadores acumulados de Locust. | Para investigar cuándo cambió una métrica durante la prueba. |
+| `p1_stats.csv` | Última captura periódica de las estadísticas de Locust. | Para consultar una captura de la ejecución. Usa `p1_final_stats.csv` para los totales al cierre. |
+| `p1_failures.csv` | Última captura periódica de los fallos de las peticiones. | Para revisar el registro periódico de errores. Usa `p1_final_failures.csv` para el cierre. |
+| `p1_exceptions.csv` | Excepciones de ejecución de Locust con mensajes, recuentos y trazas. | Para investigar errores del script de carga. |
+| `p1_docker_stats.csv` | Muestras con hora UTC, servicio, ID y nombre del contenedor, CPU, memoria usada, límite y porcentaje de memoria. | Para consultar valores exactos o comparar contenedores y réplicas. |
+| `p1_docker_stats.png` | Gráficas de CPU y memoria por contenedor. | Para consultar o compartir las gráficas de recursos como imagen. |
+
+Los CSV de fallos y excepciones pueden contener solo los encabezados si la corrida terminó sin
+eventos de ese tipo. Al presentar los resultados, indica qué versión del modelo sirvió MLflow.
+La etiqueta `origen=seed-demo` identifica el modelo de demostración entrenado con la muestra.
+
+### Regenerar las gráficas de Docker
+
+Para regenerar el PNG y actualizar el HTML a partir de las muestras guardadas, sustituye
+`CARPETA_DE_LA_CORRIDA` por el nombre de la carpeta bajo `serving/load-test/results/`. Con la imagen
+de Locust disponible, ejecuta este comando desde la raíz del repositorio.
+
+```sh
+docker compose run --rm --no-deps -T --entrypoint python locust /load-test/report_docker_stats.py /results/CARPETA_DE_LA_CORRIDA/p1_docker_stats.csv --html /results/CARPETA_DE_LA_CORRIDA/p1.html
+```
+
+Si solo tienes el CSV, omite `--html` para generar el PNG.
+
 ---
 
 ## Flujo de trabajo con Git

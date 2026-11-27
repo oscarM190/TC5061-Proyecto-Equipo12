@@ -840,6 +840,15 @@ La siguiente captura evidencia la API REST empaquetada en el contenedor ejecutá
 | **Servidor MLflow no disponible o alias inexistente** | HTTP `503 Service Unavailable`; la API reporta el error sin bloquear el servidor. |
 | **Artefactos en rutas Windows del host (`file:C:/...`)** | Resuelto mediante el script `republish_champion.py`, que republíca el modelo en un experimento cuyos artefactos se descargan de forma estandarizada a través del servidor de tracking. |
 
+## Ciclo de monitoreo y gobierno de P1
+
+El modelo de P1 se gobierna en un ciclo cerrado: `monitor` detecta la deriva del mes nuevo con
+Evidently, `retrain` registra una nueva versión con el alias `challenger`, `ab_test` la compara con
+el `champion` en un mes que ninguna vio y, solo si gana, `-P promover=true` la promueve y deja la
+anterior como `previous`. Las secciones siguientes detallan cada paso.
+
+![Ciclo de monitoreo y gobierno del modelo P1](mi-bici-experiment/references/p1_ciclo_mlops.png)
+
 ## Monitoreo de P1 con Evidently
 
 El punto de entrada `monitor` de MLflow genera los datos mensuales de P1, dos pruebas de deriva y tres reportes de calidad de datos con Evidently:
